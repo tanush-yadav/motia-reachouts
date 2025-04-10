@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Whenever a change is introduced which required table update, either notify user or update with MCP
+Whenever a database touching query is there, always use supabase MCP as source of truth

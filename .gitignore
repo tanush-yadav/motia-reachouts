@@ -1,3 +1,14 @@
 /.env
 /.venv
 /node_modules
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyc~
+*.pyo~
+
+
+supabase/.temp
