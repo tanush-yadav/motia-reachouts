@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Auto-Reachouts General Coding Rules
+
+## Code Organization
+
+- All shared interfaces must be defined in `steps/types/common.ts`
+- Utility functions must be placed in appropriate files under `steps/utils/`
+- Constants and enums should be in `steps/constants/` directory
+- All file operations must follow the established directory structure
+- Step handlers should focus on orchestration, not implementation details
+
+## Type Safety
+
+- Always use TypeScript interfaces for complex objects
+- Avoid `any` types except in library interfaces or logger parameters
+- Use shared event interfaces for all emit/subscribe operations
+- Add proper return types to all functions
+- Use enums instead of string literals for fixed values (like statuses)
+
+## Error Handling
+
+- Always continue the flow even when no data is found (zero results)
+- Emit a properly structured event even in error cases
+- Log all errors with appropriate context
+- Use try/catch blocks for all external API calls and DB operations
+- Include jobId in error tracking where possible
+
+## Modularization
+
+- Extract reusable logic into utility functions
+- Limit step handler files to flow orchestration, not implementation
+- Single responsibility principle: each utility function should do one thing well
+- Abstract external API calls into dedicated service modules
+- Keep utility functions pure when possible
+
+## Naming Conventions
+
+- Use camelCase for variables and functions
+- Use PascalCase for interfaces, types, and classes
+- Use UPPERCASE_SNAKE_CASE for constants
+- Prefix interfaces with appropriate context (e.g., `JobQuery`, `ApolloEmailsUpdatedEvent`)
+- Use descriptive verbs for functions (e.g., `extractFirstName`, `normalizeTemplatePadding`)
+
+## Data Handling
+
+- Validate user input and API responses before processing
+- Handle null/undefined values gracefully with default values
+- Use the standard LeadStatus enum for all status changes
+- Sanitize and normalize strings before using in templates
+- Include tracking IDs in all database operations when possible
+
+## Asynchronous Code
+
+- Always use async/await instead of Promise chains
+- Add proper error handling for all async operations
+- Add reasonable timeouts to external API calls
+- Use batch processing for large datasets
+- Implement rate limiting for API calls to avoid throttling
+
+## Documentation
+
+- Add JSDoc comments to all exported functions and types
+- Include example usage for complex utility functions
+- Document all parameters and return values
+- Explain non-obvious behavior or edge cases
+- Keep the next.md file updated with completed tasks and future work
+
+## Testing
+
+- Add unit tests for all utility functions
+- Mock external dependencies in tests
+- Test edge cases and failure modes
+- Use descriptive test names that explain the expected behavior
+- Keep test cases independent from each other
