@@ -1,6 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Lead } from '../types/common'
-import { extractFirstName, normalizeTemplatePadding } from './string'
+import {
+  extractCoreRole,
+  extractFirstName,
+  normalizeTemplatePadding,
+} from './string'
 
 export interface EmailTemplate {
   subject: string
@@ -34,7 +38,9 @@ export async function generateEmailTemplate(
   // Get first name of contact instead of full name
   const contactFirstName = extractFirstName(lead.contact_name) || 'there'
   const companyName = lead.company_name || 'your company'
-  const roleName = lead.role_title || 'the open position'
+
+  // Extract core role title (e.g., "Founding Engineer" from "Founding Engineer (Fullstack / AI)")
+  const roleName = extractCoreRole(lead.role_title) || 'the open position'
 
   // Get first name of sender
   const senderFirstName = extractFirstName(senderName) || senderName
@@ -45,7 +51,7 @@ export async function generateEmailTemplate(
     .replace(/{company_name}/g, companyName)
 
   let body = templateData.body
-    .replace(/{contact_name}/g, contactFirstName)
+    .replace(/{contact_name}/g, contactFirstName) // Always use first name for greeting
     .replace(/{contact_first_name}/g, contactFirstName)
     .replace(/{role}/g, roleName)
     .replace(/{company_name}/g, companyName)

@@ -87,3 +87,29 @@ export function formatRoleTitle(role: string | null | undefined): string {
     .replace(/^(a|an)\s+/i, '')
     .trim()
 }
+
+/**
+ * Extracts the core role title by removing qualifiers in parentheses and after slashes
+ * Examples:
+ * "Founding Engineer (Fullstack / AI)" -> "Founding Engineer"
+ * "Founding Engineer / Full Stack" -> "Founding Engineer"
+ * "Founding Engineer (Platform)" -> "Founding Engineer"
+ *
+ * @param roleTitle The full role title to extract from
+ * @returns The core role title
+ */
+export function extractCoreRole(roleTitle: string | null | undefined): string {
+  if (!roleTitle) return ''
+
+  // Clean and normalize the string first
+  const cleanRole = cleanString(roleTitle)
+
+  // Remove anything in parentheses
+  let coreRole = cleanRole.replace(/\s*\([^)]*\)/g, '')
+
+  // Remove anything after a slash or dash
+  coreRole = coreRole.split(/\s*[/\-]\s*/)[0]
+
+  // Final cleanup of any remaining whitespace
+  return coreRole.trim()
+}
