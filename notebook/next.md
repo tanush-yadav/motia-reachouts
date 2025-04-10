@@ -1,7 +1,10 @@
-- strip the role to be more mindfully added - marvin ai function.
-- try next {limit} if the current search results are already in leads.
+- DONE - strip the role to be more mindfully added - marvin ai function.
+  DONE - try next {limit} if the current search results are already in leads.
 - create and update with a job ID and every API call.
 - template having left and right padding? fix that.
-- when leads already exist, mindfully handle the emit and subscribe.
-- better dorks generation so there is no in-accuracy with choosing the roles.
-- only the first name passed in emails.
+  DONE - when leads already exist, mindfully handle the emit and subscribe.
+  DONE - better dorks generation so there is no in-accuracy with choosing the roles.
+- DONE - only the first name passed in emails.
+
+- once email is scheduled? how to A/B test? and when to send?
+- how to schedule follow ups on scheduled messages? and show them on the UI in replies and it's schedule too.

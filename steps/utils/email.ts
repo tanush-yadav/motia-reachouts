@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Lead } from '../types/common'
+import { extractFirstName, normalizeTemplatePadding } from './string'
 
 export interface EmailTemplate {
   subject: string
@@ -30,9 +31,13 @@ export async function generateEmailTemplate(
     )
   }
 
-  const contactName = lead.contact_name?.trim() || 'there'
+  // Get first name of contact instead of full name
+  const contactFirstName = extractFirstName(lead.contact_name) || 'there'
   const companyName = lead.company_name || 'your company'
   const roleName = lead.role_title || 'the open position'
+
+  // Get first name of sender
+  const senderFirstName = extractFirstName(senderName) || senderName
 
   // Replace placeholders in template using {variable_name} format
   let subject = templateData.subject
@@ -40,10 +45,15 @@ export async function generateEmailTemplate(
     .replace(/{company_name}/g, companyName)
 
   let body = templateData.body
-    .replace(/{contact_name}/g, contactName)
+    .replace(/{contact_name}/g, contactFirstName)
+    .replace(/{contact_first_name}/g, contactFirstName)
     .replace(/{role}/g, roleName)
     .replace(/{company_name}/g, companyName)
     .replace(/{sender_name}/g, senderName)
+    .replace(/{sender_first_name}/g, senderFirstName)
+
+  // Fix padding issues in the template
+  body = normalizeTemplatePadding(body)
 
   return {
     subject,

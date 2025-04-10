@@ -54,3 +54,47 @@ export interface EmailScheduledEvent extends BaseEvent {
     scheduledFor: Date
   }[]
 }
+
+// Add missing interfaces from step files
+export interface JobQuery extends BaseEvent {
+  limit: number
+  google_dorks: string[]
+}
+
+export interface JobUrl {
+  url: string
+  jobId: string
+  title?: string
+}
+
+export interface JobPageDetails {
+  job_url: string
+  role_title?: string
+  company_name?: string
+  job_description?: string
+  company_url?: string
+}
+
+export interface CompanyPageDetails {
+  company_url: string
+  company_website?: string
+  company_name?: string
+  founders: FounderInfo[]
+}
+
+export interface FounderInfo {
+  name?: string
+  title?: string
+  linkedin_url?: string
+}
+
+export interface SearchOptions {
+  dork: string
+  startIndex: number
+  maxResults: number
+}
+
+export interface EmailTemplate {
+  subject: string
+  body: string
+}

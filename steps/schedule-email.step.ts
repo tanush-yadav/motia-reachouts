@@ -22,9 +22,28 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
       `Processing leads for email scheduling. ${args.emailsFound} emails were found.`
     )
 
+    // Even if no emails were found, we should continue the flow
     if (args.emailsFound === 0) {
-      ctx.logger.info('No emails found to schedule outreach for')
-      return { scheduledEmails: 0 }
+      ctx.logger.info(
+        'No emails found to schedule outreach for, but continuing the flow'
+      )
+
+      // Prepare empty result to continue the flow
+      const emptyResult: EmailScheduledEvent = {
+        query: args.query,
+        role: args.role,
+        location: args.location,
+        totalScheduled: 0,
+        scheduledLeads: [],
+      }
+
+      // Still emit an event to continue the flow
+      await ctx.emit({
+        topic: 'email.scheduled',
+        data: emptyResult,
+      })
+
+      return emptyResult
     }
 
     // Initialize Supabase client
@@ -62,14 +81,32 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
     }
 
     if (!leads || leads.length === 0) {
-      ctx.logger.info('No leads found that are ready for email outreach')
-      return { scheduledEmails: 0 }
+      ctx.logger.info(
+        'No leads found that are ready for email outreach, but continuing the flow'
+      )
+
+      // Prepare empty result to continue the flow
+      const emptyResult: EmailScheduledEvent = {
+        query: args.query,
+        role: args.role,
+        location: args.location,
+        totalScheduled: 0,
+        scheduledLeads: [],
+      }
+
+      // Still emit an event to continue the flow
+      await ctx.emit({
+        topic: 'email.scheduled',
+        data: emptyResult,
+      })
+
+      return emptyResult
     }
 
     ctx.logger.info(`Found ${leads.length} leads ready for email outreach`)
 
     let scheduledEmails = 0
-    let scheduledLeads = []
+    let scheduledLeads: EmailScheduledEvent['scheduledLeads'] = []
 
     // Verify emails table exists
     await ensureTableExists(
@@ -179,22 +216,34 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
       scheduledLeads: scheduledLeads,
     }
 
-    // Emit results
+    // Always emit results to continue the flow
     await ctx.emit({
       topic: 'email.scheduled',
       data: eventData,
     })
 
-    return {
-      totalScheduled: scheduledEmails,
-      scheduledLeads: scheduledLeads,
-    }
+    return eventData
   } catch (error) {
     ctx.logger.error(
       `Unexpected error in email scheduler: ${
         error instanceof Error ? error.message : String(error)
       }`
     )
+
+    // Even on error, emit an empty result to continue the flow
+    const errorResult: EmailScheduledEvent = {
+      query: args.query,
+      role: args.role,
+      location: args.location,
+      totalScheduled: 0,
+      scheduledLeads: [],
+    }
+
+    await ctx.emit({
+      topic: 'email.scheduled',
+      data: errorResult,
+    })
+
     throw error
   }
 }

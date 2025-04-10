@@ -88,21 +88,19 @@ def generate_google_dorks(parsed_query: JobQuery) -> List[str]:
     ]
     """
 
-def generate_smart_dorks(query_data: Dict[str, Any]) -> List[str]:
+def generate_smart_dorks(parsed_query: JobQuery) -> List[str]:
     """Generate optimized Google dorks for job searching"""
     # Convert dict to object if needed
-    query = JobQuery(**query_data) if isinstance(query_data, dict) else query_data
-
     base = "site:workatastartup.com"
     dorks = []
 
     # Format role with quotes if it contains spaces
-    role = f'"{query.role}"' if ' ' in query.role else query.role
+    role = f'"{parsed_query.role}"' if ' ' in parsed_query.role else parsed_query.role
 
     # Format location with quotes if not empty or "remote"
     location = ""
-    if query.location and query.location.lower() != "remote":
-        location = f'"{query.location}"'
+    if parsed_query.location and parsed_query.location.lower() != "remote":
+        location = f'"{parsed_query.location}"'
 
     # Core dorks (most specific first)
     if location:
@@ -116,8 +114,8 @@ def generate_smart_dorks(query_data: Dict[str, Any]) -> List[str]:
     if len(dorks) < 3:
         dorks.append(f"{base} {role} hiring")
 
-    logger.info(f"Generated {len(dorks)} Google dorks for {query.role}")
-    return dorks[:query.limit if hasattr(query, 'limit') else 3]
+    logger.info(f"Generated {len(dorks)} Google dorks for {parsed_query.role}")
+    return dorks[:parsed_query.limit if hasattr(parsed_query, 'limit') else 3]
 
 
 async def handler(args, ctx):

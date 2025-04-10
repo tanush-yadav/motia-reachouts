@@ -1,202 +1,15 @@
-import { StepConfig } from '@motiadev/core'
-import { Browser, chromium } from 'playwright'
+import { Browser } from 'playwright'
 import { URL } from 'url'
-import { LeadStatus } from './constants/lead-status'
 import {
-  JobDetailsScrapedEvent,
-  JobUrlsCollectedEvent,
-  Lead,
-} from './types/common'
-import {
-  findBestContact,
-  scrapeCompanyPage,
-  scrapeJobPage,
-} from './utils/scraper'
-import { initSupabaseClient } from './utils/supabase'
+  CompanyPageDetails,
+  FounderInfo,
+  JobPageDetails,
+} from '../types/common'
 
-export const config: StepConfig = {
-  type: 'event',
-  name: 'Job Details Scraper',
-  description: 'Scrapes job details and company information from job URLs',
-  subscribes: ['job.urls.collected'],
-  emits: ['job.details.scraped'],
-  flows: ['job-search'],
-}
-
-interface JobPageDetails {
-  job_url: string
-  role_title?: string
-  company_name?: string
-  job_description?: string
-  company_url?: string
-}
-
-interface CompanyPageDetails {
-  company_url: string
-  company_website?: string
-  company_name?: string
-  founders: {
-    name?: string
-    title?: string
-    linkedin_url?: string
-  }[]
-}
-
-export async function handler(args: JobUrlsCollectedEvent, ctx: any) {
-  ctx.logger.info(`Processing ${args.count} job URLs for role: ${args.role}`)
-
-  // No need to stop the flow if there are no URLs to process
-  if (!args.jobUrls || args.jobUrls.length === 0) {
-    ctx.logger.warn('No job URLs to process, but continuing the flow')
-
-    const emptyResult: JobDetailsScrapedEvent = {
-      query: args.query,
-      role: args.role,
-      location: args.location,
-      leadsCount: 0,
-      processedCount: 0,
-      skippedCount: 0,
-      errorCount: 0,
-    }
-
-    await ctx.emit({
-      topic: 'job.details.scraped',
-      data: emptyResult,
-    })
-
-    return emptyResult
-  }
-
-  // Initialize Supabase client
-  const supabase = initSupabaseClient(ctx.logger)
-
-  const browser = await chromium.launch({ headless: true })
-  const leadsData: Lead[] = []
-
-  let processedCount = 0
-  let skippedCount = 0
-  let errorCount = 0
-
-  try {
-    for (const jobData of args.jobUrls) {
-      try {
-        ctx.logger.info(`Processing job URL: ${jobData.url}`)
-
-        // First check if this URL already exists in the database (double-check)
-        const { data: existingLead } = await supabase
-          .from('leads')
-          .select('id')
-          .eq('job_url', jobData.url)
-          .maybeSingle()
-
-        if (existingLead) {
-          ctx.logger.info(`Skipping already processed URL: ${jobData.url}`)
-          skippedCount++
-          continue
-        }
-
-        // Step 1: Scrape job page details
-        const jobDetails = await scrapeJobPage(browser, jobData.url, ctx.logger)
-
-        // Step 2: If we have a company URL, scrape company details
-        let companyDetails = null
-        if (jobDetails.company_url) {
-          companyDetails = await scrapeCompanyPage(
-            browser,
-            jobDetails.company_url,
-            ctx.logger
-          )
-
-          // Use company name from company page instead of job page
-          if (companyDetails && companyDetails.company_name) {
-            jobDetails.company_name = companyDetails.company_name
-          }
-        }
-
-        // Step 3: Find the best contact from the company details
-        const contactInfo = findBestContact(companyDetails)
-
-        // Create lead data
-        const leadData: Lead = {
-          job_url: jobDetails.job_url,
-          company_url: jobDetails.company_url,
-          company_website: companyDetails?.company_website,
-          role_title: jobDetails.role_title,
-          company_name: jobDetails.company_name,
-          job_description: jobDetails.job_description,
-          contact_name: contactInfo?.name,
-          contact_title: contactInfo?.title,
-          contact_linkedin_url: contactInfo?.linkedin_url,
-          contact_email: null,
-          status: LeadStatus.SCRAPED,
-        }
-
-        // Save to database using Supabase
-        const { error: insertError } = await supabase
-          .from('leads')
-          .insert(leadData)
-
-        if (insertError) {
-          throw new Error(`Failed to insert lead data: ${insertError.message}`)
-        }
-
-        leadsData.push(leadData)
-        processedCount++
-
-        ctx.logger.info(`Successfully processed job: ${jobData.url}`)
-      } catch (error) {
-        ctx.logger.error(`Error processing job URL ${jobData.url}: ${error}`)
-
-        // Save failed job with error message
-        try {
-          const { error: insertError } = await supabase.from('leads').insert({
-            job_url: jobData.url,
-            status: LeadStatus.ERROR,
-            error_message:
-              error instanceof Error ? error.message : String(error),
-          })
-
-          if (insertError) {
-            ctx.logger.error(
-              `Failed to save error state to database: ${insertError.message}`
-            )
-          }
-        } catch (dbError) {
-          ctx.logger.error(`Failed to save error state to database: ${dbError}`)
-        }
-
-        errorCount++
-      }
-    }
-  } finally {
-    await browser.close()
-  }
-
-  ctx.logger.info(
-    `Finished processing job URLs. Processed: ${processedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`
-  )
-
-  // Prepare the event data
-  const eventData: JobDetailsScrapedEvent = {
-    query: args.query,
-    role: args.role,
-    location: args.location,
-    leadsCount: leadsData.length,
-    processedCount,
-    skippedCount,
-    errorCount,
-  }
-
-  // Always emit the results to continue the flow, even if we processed 0 leads
-  await ctx.emit({
-    topic: 'job.details.scraped',
-    data: eventData,
-  })
-
-  return eventData
-}
-
-async function scrapeJobPage(
+/**
+ * Scrapes job details from a job posting page
+ */
+export async function scrapeJobPage(
   browser: Browser,
   url: string,
   logger: any
@@ -276,12 +89,12 @@ async function scrapeJobPage(
           jobDetails.job_description = await jobDescriptionHTML.innerText()
         }
       } catch (error) {
-        logger.info(`Error extracting HTML job description: ${error}`)
+        logger.warn(`Error extracting HTML job description: ${error}`)
         // Try innerText as fallback
         try {
           jobDetails.job_description = await jobDescriptionHTML.innerText()
         } catch (innerTextError) {
-          logger.info(
+          logger.warn(
             `Error extracting innerText job description: ${innerTextError}`
           )
         }
@@ -353,7 +166,7 @@ async function scrapeJobPage(
           jobDetails.job_description = await mainContent.innerText()
           logger.info('Extracted job description from main content')
         } else {
-          logger.info('Could not extract job description')
+          logger.warn('Could not extract job description')
         }
       }
     }
@@ -374,7 +187,10 @@ async function scrapeJobPage(
   return jobDetails
 }
 
-async function scrapeCompanyPage(
+/**
+ * Scrapes company details from a company page
+ */
+export async function scrapeCompanyPage(
   browser: Browser,
   url: string,
   logger: any
@@ -412,7 +228,7 @@ async function scrapeCompanyPage(
           )
         }
       } catch (error) {
-        logger.info(`Error extracting website text: ${error}`)
+        logger.warn(`Error extracting website text: ${error}`)
       }
     }
 
@@ -497,7 +313,7 @@ async function scrapeCompanyPage(
           }
         }
       } catch (error) {
-        logger.info(`Error processing founder link: ${error}`)
+        logger.warn(`Error processing founder link: ${error}`)
       }
     }
 
@@ -509,105 +325,13 @@ async function scrapeCompanyPage(
       )
 
       if (foundersSection) {
-        // Get the container with founders profiles
-        const foundersContainer = await page.evaluate((el) => {
-          const container = el.nextElementSibling
-          return container ? container.outerHTML : null
-        }, foundersSection)
-
-        if (foundersContainer) {
-          // Extract all founder profiles
-          const founderProfiles = await page.evaluate((html) => {
-            const container = document.createElement('div')
-            container.innerHTML = html
-
-            const profiles = []
-
-            // Look for LinkedIn links
-            const linkedInLinks = container.querySelectorAll(
-              'a[href*="linkedin.com"]'
-            )
-
-            for (const link of linkedInLinks) {
-              // For each LinkedIn link, find the surrounding profile info
-              let profileElement = link
-              // Go up to likely profile container
-              for (let i = 0; i < 3; i++) {
-                if (!profileElement.parentElement) break
-                profileElement = profileElement.parentElement
-
-                // If this element has multiple children, it might be the profile container
-                if (profileElement.children.length >= 3) break
-              }
-
-              // Extract profile information
-              const profile = {
-                name: null,
-                title: null,
-                linkedin_url: link.href,
-              }
-
-              // Find name and title
-              const nameElements = profileElement.querySelectorAll(
-                'h3, h4, strong, b, p'
-              )
-              for (const el of nameElements) {
-                const text = el.innerText.trim()
-                // Skip elements with "founder" which is likely a title
-                if (
-                  text &&
-                  text.length < 50 &&
-                  !text.toLowerCase().includes('founder')
-                ) {
-                  profile.name = text
-                  break
-                }
-              }
-
-              // Find title
-              const titleElements = profileElement.querySelectorAll('p, div')
-              for (const el of titleElements) {
-                const text = el.innerText.trim()
-                if (
-                  text &&
-                  (text.toLowerCase().includes('founder') ||
-                    text.toLowerCase().includes('ceo') ||
-                    text.toLowerCase().includes('chief'))
-                ) {
-                  profile.title = text
-                  break
-                }
-              }
-
-              // Only add if we have a LinkedIn URL
-              if (profile.linkedin_url) {
-                profiles.push(profile)
-              }
-            }
-
-            return profiles
-          }, foundersContainer)
-
-          if (founderProfiles.length > 0) {
-            // Filter out duplicates
-            const seenLinks = new Set()
-            for (const profile of founderProfiles) {
-              if (
-                profile.linkedin_url &&
-                !seenLinks.has(profile.linkedin_url)
-              ) {
-                seenLinks.add(profile.linkedin_url)
-
-                // If no title was found but we have LinkedIn, set a default title
-                if (!profile.title && profile.linkedin_url) {
-                  profile.title = 'Co-founder'
-                }
-
-                companyDetails.founders.push(profile)
-              }
-            }
-          }
-        }
+        // Try extracting founders from this section
+        await extractFoundersFromSection(
+          page,
+          foundersSection,
+          companyDetails,
+          logger
+        )
       }
     }
   } catch (error) {
@@ -623,9 +347,123 @@ async function scrapeCompanyPage(
   return companyDetails
 }
 
-function findBestContact(
+/**
+ * Extract founders from a specific section on the page
+ */
+async function extractFoundersFromSection(
+  page: any,
+  foundersSection: any,
+  companyDetails: CompanyPageDetails,
+  logger: any
+): Promise<void> {
+  try {
+    // Get the container with founders profiles
+    const foundersContainer = await page.evaluate((el) => {
+      const container = el.nextElementSibling
+      return container ? container.outerHTML : null
+    }, foundersSection)
+
+    if (foundersContainer) {
+      // Extract all founder profiles
+      const founderProfiles = await page.evaluate((html) => {
+        const container = document.createElement('div')
+        container.innerHTML = html
+
+        const profiles = []
+
+        // Look for LinkedIn links
+        const linkedInLinks = container.querySelectorAll(
+          'a[href*="linkedin.com"]'
+        )
+
+        for (const link of linkedInLinks) {
+          // For each LinkedIn link, find the surrounding profile info
+          let profileElement = link
+          // Go up to likely profile container
+          for (let i = 0; i < 3; i++) {
+            if (!profileElement.parentElement) break
+            profileElement = profileElement.parentElement
+
+            // If this element has multiple children, it might be the profile container
+            if (profileElement.children.length >= 3) break
+          }
+
+          // Extract profile information
+          const profile = {
+            name: null,
+            title: null,
+            linkedin_url: link.href,
+          }
+
+          // Find name and title
+          const nameElements = profileElement.querySelectorAll(
+            'h3, h4, strong, b, p'
+          )
+          for (const el of nameElements) {
+            const text = el.innerText.trim()
+            // Skip elements with "founder" which is likely a title
+            if (
+              text &&
+              text.length < 50 &&
+              !text.toLowerCase().includes('founder')
+            ) {
+              profile.name = text
+              break
+            }
+          }
+
+          // Find title
+          const titleElements = profileElement.querySelectorAll('p, div')
+          for (const el of titleElements) {
+            const text = el.innerText.trim()
+            if (
+              text &&
+              (text.toLowerCase().includes('founder') ||
+                text.toLowerCase().includes('ceo') ||
+                text.toLowerCase().includes('chief'))
+            ) {
+              profile.title = text
+              break
+            }
+          }
+
+          // Only add if we have a LinkedIn URL
+          if (profile.linkedin_url) {
+            profiles.push(profile)
+          }
+        }
+
+        return profiles
+      }, foundersContainer)
+
+      if (founderProfiles.length > 0) {
+        // Filter out duplicates
+        const seenLinks = new Set()
+        for (const profile of founderProfiles) {
+          if (profile.linkedin_url && !seenLinks.has(profile.linkedin_url)) {
+            seenLinks.add(profile.linkedin_url)
+
+            // If no title was found but we have LinkedIn, set a default title
+            if (!profile.title && profile.linkedin_url) {
+              profile.title = 'Co-founder'
+            }
+
+            companyDetails.founders.push(profile)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn(`Error extracting founders from section: ${error}`)
+  }
+}
+
+/**
+ * Finds the best contact from company details
+ */
+export function findBestContact(
   companyDetails: CompanyPageDetails | null
-): { name?: string; title?: string; linkedin_url?: string } | null {
+): FounderInfo | null {
   if (
     !companyDetails ||
     !companyDetails.founders ||
