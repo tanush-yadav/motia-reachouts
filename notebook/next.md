@@ -8,3 +8,4 @@
 
 - once email is scheduled? how to A/B test? and when to send?
 - how to schedule follow ups on scheduled messages? and show them on the UI in replies and it's schedule too.
+- add linkedin to job sources and create a config to for each job source and its corresponding scraping logic.
