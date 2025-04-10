@@ -143,7 +143,11 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
         }
 
         // Generate personalized email template
-        const emailTemplate = generateEmailTemplate(lead, senderName)
+        const emailTemplate = await generateEmailTemplate(
+          lead,
+          senderName,
+          supabase
+        )
 
         // Schedule the email
         const scheduledDate = calculateScheduleDate()
@@ -162,7 +166,7 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
             from_name: senderName,
             subject: emailTemplate.subject,
             body: emailTemplate.body,
-            scheduled_for: scheduledDate,
+            scheduled_at: scheduledDate,
             status: 'Scheduled',
           })
           .select()
@@ -250,24 +254,40 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
 /**
  * Generate a personalized email template based on lead information
  */
-function generateEmailTemplate(lead: Lead, senderName: string): EmailTemplate {
-  const hasName = lead.contact_name && lead.contact_name.trim() !== ''
-  const firstName = hasName ? lead.contact_name.split(' ')[0] : 'there'
+async function generateEmailTemplate(
+  lead: Lead,
+  senderName: string,
+  supabase: any
+): Promise<EmailTemplate> {
+  // Fetch template from Supabase
+  const { data: templateData, error: templateError } = await supabase
+    .from('templates')
+    .select('*')
+    .eq('name', 'default_outreach')
+    .single()
 
+  if (templateError || !templateData) {
+    throw new Error(
+      `Failed to retrieve default_outreach template: ${
+        templateError?.message || 'Template not found'
+      }`
+    )
+  }
+
+  const contactName = lead.contact_name?.trim() || 'there'
   const companyName = lead.company_name || 'your company'
   const roleName = lead.role_title || 'the open position'
 
-  const subject = `Interest in ${roleName} at ${companyName}`
+  // Replace placeholders in template using {variable_name} format
+  let subject = templateData.subject
+    .replace(/{role}/g, roleName)
+    .replace(/{company_name}/g, companyName)
 
-  const body = `Hi ${firstName},
-
-I came across the ${roleName} role at ${companyName} and I'm very interested in this opportunity. Your company's work in this space is impressive, and I believe my background would be a great fit.
-
-I'd love to learn more about the role and share how I could contribute to your team. Would you be open to a brief conversation this week?
-
-Looking forward to connecting,
-${senderName}
-`
+  let body = templateData.body
+    .replace(/{contact_name}/g, contactName)
+    .replace(/{role}/g, roleName)
+    .replace(/{company_name}/g, companyName)
+    .replace(/{sender_name}/g, senderName)
 
   return {
     subject,
