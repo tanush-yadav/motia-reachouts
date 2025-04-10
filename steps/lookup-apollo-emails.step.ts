@@ -1,6 +1,11 @@
 import { StepConfig } from '@motiadev/core'
-import { createClient } from '@supabase/supabase-js'
 import axios from 'axios'
+import {
+  ApolloEmailsUpdatedEvent,
+  JobDetailsScrapedEvent,
+} from './types/common'
+import { getRequiredEnv } from './utils/env'
+import { initSupabaseClient } from './utils/supabase'
 
 export const config: StepConfig = {
   type: 'event',
@@ -12,54 +17,16 @@ export const config: StepConfig = {
   flows: ['job-search'],
 }
 
-interface JobDetailsScrapedEvent {
-  query: string
-  role: string
-  location: string
-  leadsCount: number
-  processedCount: number
-  skippedCount: number
-  errorCount: number
-}
-
-interface Lead {
-  id: string
-  job_url: string
-  company_url?: string
-  company_website?: string
-  role_title?: string
-  company_name?: string
-  contact_name?: string
-  contact_title?: string
-  contact_linkedin_url?: string
-  contact_email?: string
-  status: string
-}
-
 export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
   ctx.logger.info(
     `Processing Apollo email lookups for ${args.leadsCount} leads`
   )
 
   // Verify Apollo API key is present
-  const apolloApiKey = process.env.APOLLO_API_KEY
-  if (!apolloApiKey) {
-    ctx.logger.error('Apollo API key not found in environment variables')
-    throw new Error('APOLLO_API_KEY environment variable is required')
-  }
+  const apolloApiKey = getRequiredEnv('APOLLO_API_KEY', ctx.logger)
 
   // Initialize Supabase client
-  const supabaseUrl = process.env.SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    ctx.logger.error('Supabase credentials not found in environment variables')
-    throw new Error(
-      'SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required'
-    )
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = initSupabaseClient(ctx.logger)
 
   // Query leads with LinkedIn URLs but no emails
   const { data: leads, error: queryError } = await supabase
@@ -83,10 +50,10 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
         query: args.query,
         role: args.role,
         location: args.location,
-        totalLeads: leads.length,
+        totalLeads: 0,
         emailsFound: 0,
         errors: 0,
-      },
+      } as ApolloEmailsUpdatedEvent,
     })
     return { emailsFound: 0, totalLeads: 0 }
   }
@@ -158,17 +125,19 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
     `Finished processing. Found ${emailsFound} emails out of ${leads.length} leads. Errors: ${errors}`
   )
 
+  const result: ApolloEmailsUpdatedEvent = {
+    query: args.query,
+    role: args.role,
+    location: args.location,
+    totalLeads: leads.length,
+    emailsFound,
+    errors,
+  }
+
   // Emit results
   await ctx.emit({
     topic: 'apollo.emails.updated',
-    data: {
-      query: args.query,
-      role: args.role,
-      location: args.location,
-      totalLeads: leads.length,
-      emailsFound,
-      errors,
-    },
+    data: result,
   })
 
   return {
@@ -187,7 +156,7 @@ async function getEmailFromLinkedIn(
   logger: any
 ): Promise<string | null> {
   if (!linkedinUrl) {
-    logger.warning('No LinkedIn URL provided')
+    logger.warn('No LinkedIn URL provided')
     return null
   }
 
@@ -229,7 +198,7 @@ async function getEmailFromLinkedIn(
       }
     }
 
-    logger.warning(`No email found for LinkedIn URL: ${linkedinUrl}`)
+    logger.warn(`No email found for LinkedIn URL: ${linkedinUrl}`)
     return null
   } catch (error) {
     logger.error(`Error during Apollo API call: ${error}`)

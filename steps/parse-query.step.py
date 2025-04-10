@@ -88,6 +88,37 @@ def generate_google_dorks(parsed_query: JobQuery) -> List[str]:
     ]
     """
 
+def generate_smart_dorks(query_data: Dict[str, Any]) -> List[str]:
+    """Generate optimized Google dorks for job searching"""
+    # Convert dict to object if needed
+    query = JobQuery(**query_data) if isinstance(query_data, dict) else query_data
+
+    base = "site:workatastartup.com"
+    dorks = []
+
+    # Format role with quotes if it contains spaces
+    role = f'"{query.role}"' if ' ' in query.role else query.role
+
+    # Format location with quotes if not empty or "remote"
+    location = ""
+    if query.location and query.location.lower() != "remote":
+        location = f'"{query.location}"'
+
+    # Core dorks (most specific first)
+    if location:
+        dorks.append(f"{base} {role} {location}")
+        dorks.append(f"{base} {role} {location} jobs")
+    else:
+        dorks.append(f"{base} {role}")
+        dorks.append(f"{base} {role} jobs")
+
+    # Add one variation with "hiring" only if we have few dorks
+    if len(dorks) < 3:
+        dorks.append(f"{base} {role} hiring")
+
+    logger.info(f"Generated {len(dorks)} Google dorks for {query.role}")
+    return dorks[:query.limit if hasattr(query, 'limit') else 3]
+
 
 async def handler(args, ctx):
     """
@@ -132,7 +163,8 @@ async def handler(args, ctx):
 
     # Generate Google dorks using Marvin
     try:
-        google_dorks = generate_google_dorks(parsed_query=parsed_query)
+        # google_dorks = generate_google_dorks(parsed_query=parsed_query)
+        google_dorks = generate_smart_dorks(parsed_query=parsed_query)
         parsed_query.google_dorks = google_dorks
         ctx.logger.info(f"Generated {len(google_dorks)} Google dorks using Marvin")
     except Exception as e:

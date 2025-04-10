@@ -1,5 +1,10 @@
 import { StepConfig } from '@motiadev/core'
-import { createClient } from '@supabase/supabase-js'
+import { LeadStatus } from './constants/lead-status'
+import { ApolloEmailsUpdatedEvent, EmailScheduledEvent } from './types/common'
+import { ensureTableExists } from './utils/database'
+import { calculateScheduleDate, generateEmailTemplate } from './utils/email'
+import { getOptionalEnv, getRequiredEnv } from './utils/env'
+import { initSupabaseClient } from './utils/supabase'
 
 export const config: StepConfig = {
   type: 'event',
@@ -9,36 +14,6 @@ export const config: StepConfig = {
   subscribes: ['apollo.emails.updated'],
   emits: ['email.scheduled'],
   flows: ['job-search'],
-}
-
-interface ApolloEmailsUpdatedEvent {
-  query: string
-  role: string
-  location: string
-  totalLeads: number
-  emailsFound: number
-  errors: number
-  leadIds?: string[] // Add leadIds to process specific leads from previous step
-}
-
-interface Lead {
-  id: string
-  job_url: string
-  company_url?: string
-  company_website?: string
-  role_title?: string
-  company_name?: string
-  job_description?: string
-  contact_name?: string
-  contact_title?: string
-  contact_linkedin_url?: string
-  contact_email: string
-  status: string
-}
-
-interface EmailTemplate {
-  subject: string
-  body: string
 }
 
 export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
@@ -53,34 +28,17 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
     }
 
     // Initialize Supabase client
-    const supabaseUrl = process.env.SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseKey) {
-      ctx.logger.error(
-        'Supabase credentials not found in environment variables'
-      )
-      throw new Error(
-        'SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required'
-      )
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = initSupabaseClient(ctx.logger)
 
     // Get the user's name and email for the outreach
-    const senderName = process.env.SENDER_NAME || 'Job Seeker'
-    const senderEmail = process.env.SENDER_EMAIL
-
-    if (!senderEmail) {
-      ctx.logger.error('Sender email not found in environment variables')
-      throw new Error('SENDER_EMAIL environment variable is required')
-    }
+    const senderName = getOptionalEnv('SENDER_NAME', 'Job Seeker')
+    const senderEmail = getRequiredEnv('SENDER_EMAIL', ctx.logger)
 
     // Query leads with found emails that are ready for outreach
     let query = supabase
       .from('leads')
       .select('*')
-      .eq('status', 'Email Found')
+      .eq('status', LeadStatus.EMAIL_FOUND)
       .not('contact_email', 'is', null)
 
     // If leadIds is provided, filter by those specific leads
@@ -114,24 +72,12 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
     let scheduledLeads = []
 
     // Verify emails table exists
-    try {
-      // Check if table exists with a simple query
-      const { error: tableCheckError } = await supabase
-        .from('emails')
-        .select('id')
-        .limit(1)
-
-      if (tableCheckError) {
-        ctx.logger.error(`Error with emails table: ${tableCheckError.message}`)
-
-        // Create emails table if it doesn't exist
-        await supabase.rpc('create_emails_if_not_exists', {})
-        ctx.logger.info('Created emails table')
-      }
-    } catch (tableError) {
-      ctx.logger.error(`Error checking emails table: ${tableError}`)
-      // Continue anyway, as the table might still exist
-    }
+    await ensureTableExists(
+      supabase,
+      'emails',
+      'create_emails_if_not_exists',
+      ctx.logger
+    )
 
     // Process each lead
     for (const lead of leads) {
@@ -154,7 +100,6 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
 
         ctx.logger.info(`Preparing to schedule email for lead ${lead.id}`)
 
-        // In a real implementation, this would connect to an email service
         // For now, we'll just save the scheduled email to Supabase
         const { data: insertData, error: insertError } = await supabase
           .from('emails')
@@ -185,7 +130,7 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
         // Update lead status to indicate email is scheduled
         const { error: updateError } = await supabase
           .from('leads')
-          .update({ status: 'Email Scheduled' })
+          .update({ status: LeadStatus.EMAIL_SCHEDULED })
           .eq('id', lead.id)
 
         if (updateError) {
@@ -196,7 +141,7 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
         }
 
         ctx.logger.info(
-          `Successfully updated lead ${lead.id} status to 'Email Scheduled'`
+          `Successfully updated lead ${lead.id} status to '${LeadStatus.EMAIL_SCHEDULED}'`
         )
 
         scheduledEmails++
@@ -225,16 +170,19 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
 
     ctx.logger.info(`Finished processing. Scheduled ${scheduledEmails} emails.`)
 
+    // Prepare event data
+    const eventData: EmailScheduledEvent = {
+      query: args.query,
+      role: args.role,
+      location: args.location,
+      totalScheduled: scheduledEmails,
+      scheduledLeads: scheduledLeads,
+    }
+
     // Emit results
     await ctx.emit({
       topic: 'email.scheduled',
-      data: {
-        query: args.query,
-        role: args.role,
-        location: args.location,
-        totalScheduled: scheduledEmails,
-        scheduledLeads: scheduledLeads,
-      },
+      data: eventData,
     })
 
     return {
@@ -249,76 +197,4 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
     )
     throw error
   }
-}
-
-/**
- * Generate a personalized email template based on lead information
- */
-async function generateEmailTemplate(
-  lead: Lead,
-  senderName: string,
-  supabase: any
-): Promise<EmailTemplate> {
-  // Fetch template from Supabase
-  const { data: templateData, error: templateError } = await supabase
-    .from('templates')
-    .select('*')
-    .eq('name', 'default_outreach')
-    .single()
-
-  if (templateError || !templateData) {
-    throw new Error(
-      `Failed to retrieve default_outreach template: ${
-        templateError?.message || 'Template not found'
-      }`
-    )
-  }
-
-  const contactName = lead.contact_name?.trim() || 'there'
-  const companyName = lead.company_name || 'your company'
-  const roleName = lead.role_title || 'the open position'
-
-  // Replace placeholders in template using {variable_name} format
-  let subject = templateData.subject
-    .replace(/{role}/g, roleName)
-    .replace(/{company_name}/g, companyName)
-
-  let body = templateData.body
-    .replace(/{contact_name}/g, contactName)
-    .replace(/{role}/g, roleName)
-    .replace(/{company_name}/g, companyName)
-    .replace(/{sender_name}/g, senderName)
-
-  return {
-    subject,
-    body,
-  }
-}
-
-/**
- * Calculate a reasonable date to schedule the email
- * This implementation schedules for the next business day at a random time
- */
-function calculateScheduleDate(): Date {
-  const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  // If tomorrow is weekend, schedule for Monday
-  const day = tomorrow.getDay()
-  if (day === 0) {
-    // Sunday
-    tomorrow.setDate(tomorrow.getDate() + 1)
-  } else if (day === 6) {
-    // Saturday
-    tomorrow.setDate(tomorrow.getDate() + 2)
-  }
-
-  // Set to business hours (9 AM - 4 PM)
-  const hour = 9 + Math.floor(Math.random() * 7) // Random hour between 9-16
-  const minute = Math.floor(Math.random() * 60)
-
-  tomorrow.setHours(hour, minute, 0, 0)
-
-  return tomorrow
 }

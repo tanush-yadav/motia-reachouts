@@ -1,0 +1,7 @@
+- strip the role to be more mindfully added - marvin ai function.
+- try next {limit} if the current search results are already in leads.
+- create and update with a job ID and every API call.
+- template having left and right padding? fix that.
+- when leads already exist, mindfully handle the emit and subscribe.
+- better dorks generation so there is no in-accuracy with choosing the roles.
+- only the first name passed in emails.
