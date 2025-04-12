@@ -58,7 +58,7 @@ export async function handler(args: JobQuery, ctx: any) {
     // Skip this dork if we've already found enough URLs
     if (uniqueJobUrls.length >= limit) break
 
-    // Try to fetch results with pagination
+    // Try to fetch results with pagination - start from the first page
     let currentStartIndex = 0
     let attemptsForThisDork = 0
 
@@ -68,7 +68,7 @@ export async function handler(args: JobQuery, ctx: any) {
       const searchOptions: SearchOptions = {
         dork,
         startIndex: currentStartIndex,
-        maxResults: Math.min(100, limit * 2), // Request more results than needed to filter
+        maxResults: Math.min(10, limit * 2), // Request 10 results per page
       }
 
       const newUrls = await searchForJobUrls(
@@ -90,8 +90,8 @@ export async function handler(args: JobQuery, ctx: any) {
 
       uniqueJobUrls.push(...newUrls)
 
-      // Update for next page (pagination)
-      currentStartIndex += searchOptions.maxResults
+      // Move to the next page (typically 10 results per page)
+      currentStartIndex += 10
     }
   }
 
@@ -130,17 +130,23 @@ export async function handler(args: JobQuery, ctx: any) {
     // Calculate how many more we need
     const additionalNeeded = limit - filteredJobUrls.length
 
-    // Try to fetch more with a recursive call (simplified approach)
-    // In a real implementation, you'd continue pagination from where you left off
-    // This is a basic implementation to illustrate the concept
+    // Continue pagination where we left off for each dork
     for (const dork of args.google_dorks) {
       if (filteredJobUrls.length >= limit) break
 
-      for (let page = 1; page <= 2; page++) {
+      // Continue from where the previous search left off
+      let startIndex = 0
+      let pagesChecked = 0
+      const maxPages = 10 // Maximum number of pages to check per dork
+
+      while (filteredJobUrls.length < limit && pagesChecked < maxPages) {
+        pagesChecked++
+        startIndex += 10 // Move to the next page
+
         const searchOptions: SearchOptions = {
           dork,
-          startIndex: page * 100, // Skip the first 100 results we already checked
-          maxResults: Math.min(100, additionalNeeded * 2),
+          startIndex,
+          maxResults: 10, // Standard page size
         }
 
         const additionalUrls = await searchForJobUrls(

@@ -70,7 +70,7 @@ def generate_google_dorks(parsed_query: JobQuery) -> List[str]:
     - Use: site:workatastartup.com as the base
     - Include the exact job role in quotes, e.g. "founding engineer"
     - If location is not "remote", include it in quotes too, e.g. "San Francisco"
-    - Include natural terms like: "jobs", "we’re hiring", "open roles"
+    - Include natural terms like: "jobs", "we're hiring", "open roles"
     - Avoid generic keywords that return company pages
     - Output only clean, complete Google-ready queries as a list of strings
 
@@ -82,7 +82,7 @@ def generate_google_dorks(parsed_query: JobQuery) -> List[str]:
     [
       'site:workatastartup.com "founding engineer" "San Francisco"',
       'site:workatastartup.com "founding engineer" "San Francisco" "jobs"',
-      'site:workatastartup.com "founding engineer" "we’re hiring" "San Francisco"',
+      'site:workatastartup.com "founding engineer" "we're hiring" "San Francisco"',
       'site:workatastartup.com "founding engineer" "San Francisco" "open role"',
       'site:workatastartup.com "founding engineer" "job listing" "San Francisco"'
     ]
@@ -97,10 +97,13 @@ def generate_smart_dorks(parsed_query: JobQuery) -> List[str]:
     # Format role with quotes if it contains spaces
     role = f'"{parsed_query.role}"' if ' ' in parsed_query.role else parsed_query.role
 
-    # Format location with quotes if not empty or "remote"
+    # Format location with quotes
     location = ""
-    if parsed_query.location and parsed_query.location.lower() != "remote":
-        location = f'"{parsed_query.location}"'
+    if parsed_query.location:
+        if parsed_query.location.lower() == "remote":
+            location = '"remote"'
+        else:
+            location = f'"{parsed_query.location}"'
 
     # Core dorks (most specific first)
     if location:

@@ -101,14 +101,14 @@ export function formatRoleTitle(role: string | null | undefined): string {
 export function extractCoreRole(roleTitle: string | null | undefined): string {
   if (!roleTitle) return ''
 
-  // Clean and normalize the string first
-  const cleanRole = cleanString(roleTitle)
-
-  // Remove anything in parentheses
-  let coreRole = cleanRole.replace(/\s*\([^)]*\)/g, '')
+  // First, remove anything in parentheses (including the parentheses)
+  let coreRole = roleTitle.replace(/\s*\([^)]*\)/g, '')
 
   // Remove anything after a slash or dash
   coreRole = coreRole.split(/\s*[/\-]\s*/)[0]
+
+  // Remove any commas and text after them (which might be from parenthetical content)
+  coreRole = coreRole.split(',')[0]
 
   // Final cleanup of any remaining whitespace
   return coreRole.trim()

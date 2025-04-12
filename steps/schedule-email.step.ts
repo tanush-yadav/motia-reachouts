@@ -12,8 +12,19 @@ export const config: StepConfig = {
   description:
     'Schedules personalized outreach emails for leads with found emails',
   subscribes: ['apollo.emails.updated'],
-  emits: ['email.scheduled'],
+  emits: ['email.scheduled', 'email.approval.required'],
   flows: ['job-search'],
+}
+
+interface EmailLog {
+  lead_id: string
+  to_email: string
+  subject: string
+  body: string
+  template_used: string
+  status: string
+  scheduled_at: string | null
+  is_approved: boolean
 }
 
 export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
@@ -137,32 +148,44 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
 
         ctx.logger.info(`Preparing to schedule email for lead ${lead.id}`)
 
-        // For now, we'll just save the scheduled email to Supabase
-        const { data: insertData, error: insertError } = await supabase
-          .from('emails')
-          .insert({
-            lead_id: lead.id,
-            to_email: lead.contact_email,
-            to_name: lead.contact_name || 'Hiring Manager',
-            from_email: senderEmail,
-            from_name: senderName,
-            subject: emailTemplate.subject,
-            body: emailTemplate.body,
-            scheduled_at: scheduledDate,
-            status: 'Scheduled',
-          })
-          .select()
+        // Create email log entry
+        const emailLog: EmailLog = {
+          lead_id: lead.id,
+          to_email: lead.contact_email,
+          subject: emailTemplate.subject,
+          body: emailTemplate.body,
+          template_used: emailTemplate.name,
+          status: 'Scheduled',
+          scheduled_at: scheduledDate.toISOString(),
+          is_approved: null, // Default to null so we can update this from UI.
+        }
 
-        if (insertError) {
+        // Insert into emails table
+        const { data: newEmail, error: emailInsertError } = await supabase
+          .from('emails')
+          .insert(emailLog)
+          .select()
+          .single()
+
+        if (emailInsertError) {
           ctx.logger.error(
-            `Error scheduling email for lead ${lead.id}: ${insertError.message}`
+            `Error logging email for lead ${lead.id}: ${emailInsertError.message}`
           )
           continue
         }
 
-        ctx.logger.info(
-          `Email scheduled with ID: ${insertData?.[0]?.id || 'unknown'}`
-        )
+        // Emit an event for email approval
+        await ctx.emit({
+          topic: 'email.approval.required',
+          data: {
+            emailId: newEmail.id,
+            leadId: lead.id,
+            subject: emailTemplate.subject,
+            to: lead.contact_email,
+            companyName: lead.company_name,
+            roleTitle: lead.role_title,
+          },
+        })
 
         // Update lead status to indicate email is scheduled
         const { error: updateError } = await supabase

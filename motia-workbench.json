@@ -23,6 +23,10 @@
     "steps/scrape-job-details.step.ts": {
       "x": 70,
       "y": 730
+    },
+    "steps/approve-email.step.ts": {
+      "x": 487.3524687436244,
+      "y": 132.1155643954318
     }
   }
 }

@@ -23,8 +23,14 @@ export async function getEmailFromLinkedIn(
       linkedin_url: linkedinUrl,
     }
 
+    // Log request details (masking the API key)
+    logger.info(`Apollo API Request: POST ${url}`)
+
     // Make the request
     const response = await axios.post(url, payload)
+
+    // Log response info
+    logger.info(`Apollo API Response Status: ${response.status}`)
 
     // Parse the response
     const data = response.data
@@ -52,9 +58,31 @@ export async function getEmailFromLinkedIn(
     }
 
     logger.warn(`No email found for LinkedIn URL: ${linkedinUrl}`)
+    logger.debug(`Apollo API full response: ${JSON.stringify(data, null, 2)}`)
     return null
   } catch (error) {
-    logger.error(`Error during Apollo API call: ${error}`)
+    // Enhanced error logging
+    logger.error(`Apollo API call failed for LinkedIn URL: ${linkedinUrl}`)
+
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      logger.error(`Status: ${error.response.status}`)
+      logger.error(
+        `Headers: ${JSON.stringify(error.response.headers, null, 2)}`
+      )
+      logger.error(
+        `Response data: ${JSON.stringify(error.response.data, null, 2)}`
+      )
+    } else if (error.request) {
+      // The request was made but no response was received
+      logger.error('No response received from Apollo API')
+      logger.error(`Request details: ${JSON.stringify(error.request, null, 2)}`)
+    } else {
+      // Something happened in setting up the request
+      logger.error(`Error message: ${error.message}`)
+      logger.error(`Error stack: ${error.stack}`)
+    }
     return null
   }
 }
