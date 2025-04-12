@@ -1,8 +1,35 @@
-## Getting Started
+# Auto Reachouts Client
 
-Create a .env.local -> For supabase config
+This is the frontend application for the Auto Reachouts system, built with Next.js and Shadcn UI components.
 
-First, run the development server:
+## Setup Instructions
+
+### 1. Install Dependencies
+
+```bash
+# Navigate to the client directory
+cd client
+
+# Install dependencies
+npm install
+# or
+pnpm install
+# or
+yarn install
+```
+
+### 2. Environment Configuration
+
+Create a `.env.local` file in the client directory with the following variables:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+Replace `your_supabase_url` and `your_supabase_anon_key` with your actual Supabase credentials.
+
+### 3. Run Development Server
 
 ```bash
 npm run dev
@@ -10,29 +37,34 @@ npm run dev
 yarn dev
 # or
 pnpm dev
-# or
-bun dev
 ```
 
-# shadcn/ui Mail App
+The application will be available at [http://localhost:3000](http://localhost:3000).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Email Management**: View, approve, reject, and delete emails
+- **Email Scheduling**: Schedule emails to be sent at specified times
+- **Email Templates**: Use templates for consistent email communication
+- **Approval Workflow**: Built-in approval process for email sending
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+## Tech Stack
+
+- **Framework**: Next.js
+- **UI Components**: Shadcn UI
+- **Styling**: Tailwind CSS
+- **Database**: Supabase
+- **Date Handling**: date-fns
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
+To learn more about the technologies used:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Shadcn UI](https://ui.shadcn.com/)
+- [Tailwind CSS](https://tailwindcss.com/docs)
+- [Supabase Documentation](https://supabase.io/docs)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## Contributing
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+Contributions are welcome! Please feel free to submit a Pull Request.
