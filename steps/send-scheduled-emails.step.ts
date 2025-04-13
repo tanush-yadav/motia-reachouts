@@ -93,7 +93,6 @@ export const config: StepConfig = {
   name: 'Scheduled Email Sender',
   description:
     'Sends approved emails during SF business hours (9-11 AM), running every minute',
-  // cron: '*/15 * * * *', // Run every 15 minutes
   cron: '* * * * *', // Every minute
   flows: ['job-search'],
   emits: ['email.scheduled.sent', 'email.scheduled.error'],
