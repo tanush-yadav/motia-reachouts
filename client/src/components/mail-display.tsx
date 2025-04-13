@@ -1,17 +1,14 @@
-import addDays from 'date-fns/addDays'
-import addHours from 'date-fns/addHours'
 import format from 'date-fns/format'
-import nextSaturday from 'date-fns/nextSaturday'
 import {
-  Archive,
-  ArchiveX,
   CheckCircle,
-  Clock,
+  Edit,
+  ExternalLink,
   Forward,
   Loader2,
   MoreVertical,
   Reply,
   ReplyAll,
+  Save,
   Trash2,
   XCircle,
 } from 'lucide-react'
@@ -19,19 +16,14 @@ import { useState } from 'react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -43,7 +35,9 @@ import {
 import {
   deleteEmail,
   getEmailById,
+  getLeadById,
   updateApprovalStatus,
+  updateEmail,
 } from '@/lib/emailService'
 import React from 'react'
 import { Mail } from '../app/data'
@@ -58,9 +52,14 @@ interface MailDisplayProps {
 export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
   const today = new Date()
   const [emailDetails, setEmailDetails] = React.useState<any>(null)
+  const [leadDetails, setLeadDetails] = React.useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [editSubject, setEditSubject] = useState('')
+  const [editBody, setEditBody] = useState('')
   const [, setMail] = useMail()
 
   React.useEffect(() => {
@@ -68,12 +67,29 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
       if (mail?.id) {
         const details = await getEmailById(mail.id)
         setEmailDetails(details)
+
+        // Initialize edit fields with current values
+        setEditSubject(details?.subject || '')
+        setEditBody(details?.body || '')
+
+        // Fetch lead details if lead_id exists
+        if (details?.lead_id) {
+          const lead = await getLeadById(details.lead_id)
+          setLeadDetails(lead)
+        } else {
+          setLeadDetails(null)
+        }
       } else {
         setEmailDetails(null)
+        setEditSubject('')
+        setEditBody('')
+        setLeadDetails(null)
       }
     }
 
     fetchEmailDetails()
+    // Reset edit mode when mail changes
+    setIsEditing(false)
   }, [mail?.id])
 
   const handleDelete = async () => {
@@ -118,6 +134,70 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
     }
   }
 
+  const handleSaveEdit = async () => {
+    if (!mail?.id) return
+
+    try {
+      setIsSaving(true)
+
+      // Only scheduled emails can be edited
+      if (emailDetails?.status !== 'Scheduled') {
+        alert('Only scheduled emails can be edited')
+        return
+      }
+
+      await updateEmail(mail.id, {
+        subject: editSubject,
+        body: editBody,
+      })
+
+      // Update local state
+      setEmailDetails((prev) => ({
+        ...prev,
+        subject: editSubject,
+        body: editBody,
+      }))
+
+      // Update mail object to reflect changes
+      if (mail) {
+        setMail({
+          selected: mail.id,
+          mail: {
+            ...mail,
+            subject: editSubject,
+            text: editBody,
+          },
+        })
+      }
+
+      // Exit edit mode
+      setIsEditing(false)
+
+      // Refresh emails list
+      if (onEmailDeleted) {
+        onEmailDeleted()
+      }
+    } catch (error) {
+      console.error('Failed to save email:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Function to open job URL
+  const openJobUrl = () => {
+    if (leadDetails?.job_url) {
+      window.open(leadDetails.job_url, '_blank')
+    }
+  }
+
+  // Function to open company URL
+  const openCompanyUrl = () => {
+    if (leadDetails?.company_url) {
+      window.open(leadDetails.company_url, '_blank')
+    }
+  }
+
   // Function to highlight URLs in text
   const highlightUrls = (text: string) => {
     if (!text) return ''
@@ -133,28 +213,36 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
     })
   }
 
+  // Check if email is editable (only scheduled emails)
+  const isEmailEditable = emailDetails?.status === 'Scheduled'
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center p-2">
         <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!mail}>
-                <Archive className="h-4 w-4" />
-                <span className="sr-only">Archive</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Archive</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={!mail}>
-                <ArchiveX className="h-4 w-4" />
-                <span className="sr-only">Move to junk</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Move to junk</TooltipContent>
-          </Tooltip>
+          {/* YC Icon */}
+          {leadDetails?.job_url && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="bg-orange-100 hover:bg-orange-200"
+                    onClick={openJobUrl}
+                  >
+                    <div className="h-4 w-4 flex items-center justify-center font-bold text-orange-500">
+                      Y
+                    </div>
+                    <span className="sr-only">Go to YC Job</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View job on Y Combinator</TooltipContent>
+              </Tooltip>
+              <Separator orientation="vertical" className="mx-1 h-6" />
+            </>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -225,7 +313,49 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
             </TooltipContent>
           </Tooltip>
           <Separator orientation="vertical" className="mx-1 h-6" />
-          <Tooltip>
+          {/* Edit/Save buttons */}
+          {isEmailEditable && (
+            <>
+              {isEditing ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={!mail || isSaving}
+                      onClick={handleSaveEdit}
+                      className={isSaving ? 'bg-blue-50' : ''}
+                    >
+                      {isSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      <span className="sr-only">Save</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Save changes</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={!mail || !isEmailEditable}
+                      onClick={() => setIsEditing(true)}
+                    >
+                      <Edit className="h-4 w-4" />
+                      <span className="sr-only">Edit</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit email</TooltipContent>
+                </Tooltip>
+              )}
+              <Separator orientation="vertical" className="mx-1 h-6" />
+            </>
+          )}
+          {/* <Tooltip>
             <Popover>
               <PopoverTrigger asChild>
                 <TooltipTrigger asChild>
@@ -283,7 +413,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
               </PopoverContent>
             </Popover>
             <TooltipContent>Snooze</TooltipContent>
-          </Tooltip>
+          </Tooltip> */}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Tooltip>
@@ -346,7 +476,16 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
               </Avatar>
               <div className="grid gap-1">
                 <div className="font-semibold">{mail.name}</div>
-                <div className="line-clamp-1 text-xs">{mail.subject}</div>
+                {isEditing ? (
+                  <Input
+                    value={editSubject}
+                    onChange={(e) => setEditSubject(e.target.value)}
+                    placeholder="Subject"
+                    className="text-xs h-7 mt-1"
+                  />
+                ) : (
+                  <div className="line-clamp-1 text-xs">{mail.subject}</div>
+                )}
                 <div className="line-clamp-1 text-xs">
                   <span className="font-medium">To:</span> {mail.email}
                 </div>
@@ -356,6 +495,32 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
                     scheduledAt={emailDetails.scheduled_at}
                     sentAt={emailDetails.sent_at}
                   />
+                )}
+                {leadDetails && (
+                  <div className="flex items-center text-xs text-blue-500 mt-1">
+                    <span className="font-medium mr-1">Company:</span>
+                    <span>{leadDetails.company_name}</span>
+                    <div className="flex ml-2">
+                      {leadDetails.job_url && (
+                        <button
+                          onClick={openJobUrl}
+                          className="text-blue-600 hover:text-blue-800 flex items-center"
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Job post
+                        </button>
+                      )}
+                      {leadDetails.company_url && (
+                        <button
+                          onClick={openCompanyUrl}
+                          className="ml-3 text-blue-600 hover:text-blue-800 flex items-center"
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Company site
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -367,7 +532,14 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
           </div>
           <Separator />
           <div className="flex-1 p-4 text-sm overflow-auto">
-            {mail.text.startsWith('<') ? (
+            {isEditing ? (
+              <Textarea
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+                placeholder="Email body"
+                className="w-full min-h-[200px]"
+              />
+            ) : mail.text.startsWith('<') ? (
               <div dangerouslySetInnerHTML={{ __html: mail.text }} />
             ) : (
               <div

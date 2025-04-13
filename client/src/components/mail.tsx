@@ -1,6 +1,14 @@
 'use client'
 
-import { AlertCircle, Clock, File, Inbox, Search, Send } from 'lucide-react'
+import {
+  AlertCircle,
+  Ban,
+  Clock,
+  File,
+  Inbox,
+  Search,
+  Send,
+} from 'lucide-react'
 import * as React from 'react'
 
 import { Input } from '@/components/ui/input'
@@ -45,6 +53,7 @@ export function Mail({
   const [mail, setMail] = useMail()
   const [mails, setMails] = React.useState<Mail[]>(initialMails)
   const [loading, setLoading] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState('inbox')
 
   // Function to refresh emails
   const refreshEmails = React.useCallback(async () => {
@@ -65,7 +74,35 @@ export function Mail({
     setMails(initialMails)
   }, [initialMails])
 
+  // Get filtered emails for the current view
+  const getFilteredEmails = () => {
+    if (activeTab === 'inbox') {
+      // Exclude rejected emails from inbox
+      return mails.filter((mail) => mail.is_approved !== false)
+    } else if (activeTab === 'rejected') {
+      // Only show rejected emails
+      return mails.filter((mail) => mail.is_approved === false)
+    } else if (activeTab === 'sent') {
+      return mails.filter((mail) => mail.labels.includes('sent'))
+    } else if (activeTab === 'scheduled') {
+      return mails.filter((mail) => mail.labels.includes('scheduled'))
+    } else if (activeTab === 'pending') {
+      return mails.filter((mail) => mail.labels.includes('pending'))
+    } else if (activeTab === 'failed') {
+      return mails.filter(
+        (mail) =>
+          mail.labels.includes('failed') || mail.labels.includes('error')
+      )
+    }
+
+    return mails
+  }
+
   // Count emails by status
+  const inboxCount = mails.filter((mail) => mail.is_approved !== false).length
+  const rejectedCount = mails.filter(
+    (mail) => mail.is_approved === false
+  ).length
   const sentCount = mails.filter((mail) => mail.labels.includes('sent')).length
   const scheduledCount = mails.filter((mail) =>
     mail.labels.includes('scheduled')
@@ -76,7 +113,16 @@ export function Mail({
   const failedCount = mails.filter(
     (mail) => mail.labels.includes('failed') || mail.labels.includes('error')
   ).length
-  const allCount = mails.length
+
+  // Handle tab change
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab)
+    // Clear selected email when switching tabs
+    setMail({ selected: null })
+  }
+
+  // Filtered emails for current view
+  const filteredEmails = getFilteredEmails()
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -119,34 +165,46 @@ export function Mail({
             isCollapsed={isCollapsed}
             links={[
               {
-                title: 'All Emails',
-                label: allCount.toString(),
+                title: 'Inbox',
+                label: inboxCount.toString(),
                 icon: Inbox,
-                variant: 'default',
+                variant: activeTab === 'inbox' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('inbox'),
+              },
+              {
+                title: 'Rejected',
+                label: rejectedCount.toString(),
+                icon: Ban,
+                variant: activeTab === 'rejected' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('rejected'),
               },
               {
                 title: 'Sent',
                 label: sentCount.toString(),
                 icon: Send,
-                variant: 'ghost',
+                variant: activeTab === 'sent' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('sent'),
               },
               {
                 title: 'Scheduled',
                 label: scheduledCount.toString(),
                 icon: Clock,
-                variant: 'ghost',
+                variant: activeTab === 'scheduled' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('scheduled'),
               },
               {
                 title: 'Pending',
                 label: pendingCount.toString(),
                 icon: File,
-                variant: 'ghost',
+                variant: activeTab === 'pending' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('pending'),
               },
               {
                 title: 'Failed',
                 label: failedCount.toString(),
                 icon: AlertCircle,
-                variant: 'ghost',
+                variant: activeTab === 'failed' ? 'default' : 'ghost',
+                onClick: () => handleTabChange('failed'),
               },
             ]}
           />
@@ -155,7 +213,14 @@ export function Mail({
         <ResizablePanel defaultSize={defaultLayout[1]} minSize={30}>
           <Tabs defaultValue="all">
             <div className="flex items-center px-4 py-2">
-              <h1 className="text-xl font-bold">Inbox</h1>
+              <h1 className="text-xl font-bold">
+                {activeTab === 'inbox' && 'Inbox'}
+                {activeTab === 'rejected' && 'Rejected Emails'}
+                {activeTab === 'sent' && 'Sent Emails'}
+                {activeTab === 'scheduled' && 'Scheduled Emails'}
+                {activeTab === 'pending' && 'Pending Emails'}
+                {activeTab === 'failed' && 'Failed Emails'}
+              </h1>
               <TabsList className="ml-auto">
                 <TabsTrigger
                   value="all"
@@ -181,10 +246,10 @@ export function Mail({
               </form>
             </div>
             <TabsContent value="all" className="m-0">
-              <MailList items={mails} />
+              <MailList items={filteredEmails} />
             </TabsContent>
             <TabsContent value="unread" className="m-0">
-              <MailList items={mails.filter((item) => !item.read)} />
+              <MailList items={filteredEmails.filter((item) => !item.read)} />
             </TabsContent>
           </Tabs>
         </ResizablePanel>
@@ -201,7 +266,9 @@ export function Mail({
             </div>
           ) : (
             <MailDisplay
-              mail={mails.find((item) => item.id === mail.selected) || null}
+              mail={
+                filteredEmails.find((item) => item.id === mail.selected) || null
+              }
               onEmailDeleted={refreshEmails}
             />
           )}

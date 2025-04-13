@@ -8,6 +8,7 @@ export type Mail = {
   read: boolean
   labels: string[]
   is_approved?: boolean | null
+  lead_id?: string | null
 }
 
 export const accounts = [

@@ -29,6 +29,21 @@ export async function getEmailById(id: string) {
   return data as EmailType
 }
 
+export async function getLeadById(id: string) {
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    console.error('Error fetching lead:', error)
+    return null
+  }
+
+  return data
+}
+
 export async function deleteEmail(id: string) {
   const { error } = await supabase.from('emails').delete().eq('id', id)
 
@@ -68,5 +83,17 @@ export function convertEmailToMailFormat(email: EmailType) {
     read: true, // Assuming all emails are read
     labels: [email.status.toLowerCase()], // Using status as label
     is_approved: email.is_approved,
+    lead_id: email.lead_id, // Include lead_id for job URL linking
   }
+}
+
+export async function updateEmail(id: string, updates: Partial<EmailType>) {
+  const { error } = await supabase.from('emails').update(updates).eq('id', id)
+
+  if (error) {
+    console.error('Error updating email:', error)
+    throw error
+  }
+
+  return true
 }

@@ -4,49 +4,8 @@ import nodemailer from 'nodemailer'
 
 // Constants for configuration
 const BATCH_SIZE = 5 // Number of emails to process in each batch
-const BATCH_DELAY_MS = 3000 // 3 second delay between batches
-const MAILSUITE_TRACKING_URL = 'https://track.mailsuite.com/open/' // Base URL for Mailsuite tracking
-
-/**
- * Utilities for email processing
- */
-class EmailUtils {
-  /**
-   * Add tracking pixel to HTML emails
-   */
-  static addTrackingPixel(body: string, trackingId: string): string {
-    // If email already has the tracking pixel placeholder, replace it
-    if (body.includes('{your_tracking_id}')) {
-      return body.replace('{your_tracking_id}', trackingId)
-    }
-
-    // Otherwise, append tracking pixel before body close tag
-    if (body.includes('</body>')) {
-      return body.replace(
-        '</body>',
-        `<!-- Mailsuite tracking pixel -->
-<img src="${MAILSUITE_TRACKING_URL}${trackingId}" alt="" width="1" height="1" style="display: none;" />
-</body>`
-      )
-    }
-
-    // If no body tag, just append to the end
-    return (
-      body +
-      `
-<!-- Mailsuite tracking pixel -->
-<img src="${MAILSUITE_TRACKING_URL}${trackingId}" alt="" width="1" height="1" style="display: none;" />`
-    )
-  }
-
-  /**
-   * Generate a unique tracking ID
-   */
-  static generateTrackingId(emailId: string): string {
-    // Create a unique tracking ID based on email ID and timestamp
-    return `${emailId}-${Date.now()}`
-  }
-}
+const EMAIL_DELAY_MS = 25000 // 25 second delay between emails (random between 20-30 seconds)
+const MAX_TIME_DIFF_MS = 60000 // 1 minute maximum difference between scheduled time and current time
 
 /**
  * Email sender service interface for modularity
@@ -58,7 +17,6 @@ interface EmailSender {
     body: string
     from: string
     isHtml?: boolean
-    trackingId?: string
   }): Promise<void>
 }
 
@@ -81,7 +39,6 @@ class GmailEmailSender implements EmailSender {
     body: string
     from: string
     isHtml?: boolean
-    trackingId?: string
   }): Promise<void> {
     // Check if the content is HTML by looking for HTML tags
     // Default to true if isHtml is explicitly set, otherwise detect from content
@@ -90,10 +47,6 @@ class GmailEmailSender implements EmailSender {
         ? options.isHtml
         : this.detectHtml(options.body)
 
-    // Get or generate tracking ID
-    const trackingId =
-      options.trackingId || EmailUtils.generateTrackingId('email')
-
     const mailOptions: any = {
       from: options.from,
       to: options.to,
@@ -101,8 +54,7 @@ class GmailEmailSender implements EmailSender {
     }
 
     if (isHtml) {
-      // Add tracking pixel to HTML content
-      mailOptions.html = EmailUtils.addTrackingPixel(options.body, trackingId)
+      mailOptions.html = options.body
       // Optionally provide a plain text version for email clients that don't support HTML
       mailOptions.text = this.stripHtml(options.body)
     } else {
@@ -144,6 +96,24 @@ export const config: StepConfig = {
   emits: ['email.scheduled.sent', 'email.scheduled.error'],
 }
 
+/**
+ * Get a random delay between 20-30 seconds
+ */
+function getRandomDelay(): number {
+  return Math.floor(Math.random() * 10000) + 20000 // 20000-30000 ms (20-30 seconds)
+}
+
+/**
+ * Check if it's time to send an email based on its scheduled time
+ */
+function isTimeToSend(scheduledAt: string): boolean {
+  const scheduledTime = new Date(scheduledAt).getTime()
+  const currentTime = new Date().getTime()
+
+  // Only send if we're within MAX_TIME_DIFF_MS of the scheduled time
+  return Math.abs(currentTime - scheduledTime) <= MAX_TIME_DIFF_MS
+}
+
 export async function handler(ctx: any) {
   ctx.logger.info('Starting scheduled email sending process')
 
@@ -181,18 +151,18 @@ export async function handler(ctx: any) {
   // Query for emails that are:
   // 1. Approved (is_approved = true)
   // 2. Not yet sent (sent_at is null)
-  // 3. Scheduled for now or earlier (scheduled_at <= current time)
-  // 4. Status is Approved or Scheduled
+  // 3. Status is Scheduled
   const { data: emails, error: queryError } = await supabase
     .from('emails')
     .select('*')
     .eq('is_approved', true)
     .eq('status', 'Scheduled')
-  // .order('scheduled_at', { ascending: true }) // Send oldest scheduled emails first
-
-  // ideally we should set sent_at later and send at scheduled time. TESTING
-  // .is('sent_at', null)
-  // .lte('scheduled_at', now.toISOString())
+    .is('sent_at', null)
+    .lte(
+      'scheduled_at',
+      new Date(now.getTime() + MAX_TIME_DIFF_MS).toISOString()
+    )
+    .order('scheduled_at', { ascending: true }) // Send oldest scheduled emails first
 
   if (queryError) {
     ctx.logger.error(`Error querying scheduled emails: ${queryError.message}`)
@@ -204,33 +174,53 @@ export async function handler(ctx: any) {
     return { sentCount: 0, errorCount: 0 }
   }
 
-  ctx.logger.info(`Found ${emails.length} approved emails ready to send`)
+  // Filter emails that are due to be sent (within the time window)
+  const emailsDueNow = emails.filter((email) =>
+    isTimeToSend(email.scheduled_at)
+  )
+
+  if (emailsDueNow.length === 0) {
+    ctx.logger.info('No emails scheduled for current time window')
+    return { sentCount: 0, errorCount: 0 }
+  }
+
+  ctx.logger.info(
+    `Found ${emailsDueNow.length} approved emails to send in the current time window`
+  )
 
   // Statistics tracking
   let sentCount = 0
   let errorCount = 0
 
   // Process emails in batches
-  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-    const batch = emails.slice(i, i + BATCH_SIZE)
+  for (let i = 0; i < emailsDueNow.length; i += BATCH_SIZE) {
+    const batch = emailsDueNow.slice(i, i + BATCH_SIZE)
     ctx.logger.info(
       `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(
-        emails.length / BATCH_SIZE
+        emailsDueNow.length / BATCH_SIZE
       )}`
     )
 
-    // Process each email in the current batch
-    for (const email of batch) {
+    // Process each email in the current batch with a delay between each
+    for (let j = 0; j < batch.length; j++) {
+      const email = batch[j]
+
+      // If not the first email in the batch, add a delay
+      if (j > 0) {
+        const delay = getRandomDelay()
+        ctx.logger.info(
+          `Waiting ${delay / 1000} seconds before sending next email...`
+        )
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+
       try {
         const isHtml = email.body?.includes('<') || false
-
-        // Generate tracking ID for this email
-        const trackingId = EmailUtils.generateTrackingId(email.id)
 
         ctx.logger.info(
           `Sending email ${email.id} to ${email.to_email} (format: ${
             isHtml ? 'HTML' : 'plain text'
-          }, tracking ID: ${trackingId})`
+          })`
         )
 
         // Send the email
@@ -240,7 +230,6 @@ export async function handler(ctx: any) {
           body: email.body,
           from: emailFrom,
           isHtml, // Explicitly set if it's HTML content
-          trackingId, // Add tracking ID
         })
 
         // Update the email record as sent
@@ -250,7 +239,6 @@ export async function handler(ctx: any) {
             status: 'Sent',
             sent_at: new Date().toISOString(),
             is_sent: true,
-            tracking_id: trackingId, // Store tracking ID in database
           })
           .eq('id', email.id)
 
@@ -331,16 +319,6 @@ export async function handler(ctx: any) {
           },
         })
       }
-    }
-
-    // If this isn't the last batch, add a delay before processing the next batch
-    if (i + BATCH_SIZE < emails.length) {
-      ctx.logger.info(
-        `Batch complete. Waiting ${
-          BATCH_DELAY_MS / 1000
-        } seconds before next batch...`
-      )
-      await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS))
     }
   }
 
