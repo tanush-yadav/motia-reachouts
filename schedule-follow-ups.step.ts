@@ -1,12 +1,12 @@
 import { StepConfig } from '@motiadev/core'
 import { createClient } from '@supabase/supabase-js'
 
+// FIXME: disconnected unless tested.
 export const config: StepConfig = {
   type: 'event',
   name: 'Schedule Follow Ups',
   description: 'Schedule follow ups for emails',
-  // FIXME: disconnected unless tested.
-  // subscribes: ['email.scheduled.sent'],
+  subscribes: ['email.scheduled.sent'],
   emits: ['email.followup.scheduled', 'email.followup.error'],
   flows: ['job-search'],
 }
