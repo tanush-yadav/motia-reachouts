@@ -81,9 +81,9 @@ export function convertEmailToMailFormat(email: EmailType) {
     text: email.body || '',
     date: email.sent_at,
     read: true, // Assuming all emails are read
-    labels: [email.status.toLowerCase()], // Using status as label
+    labels: [email.status.toLowerCase()],
     is_approved: email.is_approved,
-    lead_id: email.lead_id, // Include lead_id for job URL linking
+    lead_id: email.lead_id,
   }
 }
 

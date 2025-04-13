@@ -4,8 +4,10 @@ import nodemailer from 'nodemailer'
 
 // Constants for configuration
 const BATCH_SIZE = 5 // Number of emails to process in each batch
-const EMAIL_DELAY_MS = 25000 // 25 second delay between emails (random between 20-30 seconds)
-const MAX_TIME_DIFF_MS = 60000 // 1 minute maximum difference between scheduled time and current time
+const EMAIL_DELAY_MS = 60000 // 60 second delay between emails (1 per minute)
+const SF_TIMEZONE = 'America/Los_Angeles' // San Francisco timezone
+const SEND_START_HOUR = 9 // 9 AM SF time
+const SEND_END_HOUR = 11 // 11 AM SF time
 
 /**
  * Email sender service interface for modularity
@@ -17,7 +19,7 @@ interface EmailSender {
     body: string
     from: string
     isHtml?: boolean
-  }): Promise<void>
+  }): Promise<{ messageId?: string }>
 }
 
 /**
@@ -39,7 +41,7 @@ class GmailEmailSender implements EmailSender {
     body: string
     from: string
     isHtml?: boolean
-  }): Promise<void> {
+  }): Promise<{ messageId?: string }> {
     // Check if the content is HTML by looking for HTML tags
     // Default to true if isHtml is explicitly set, otherwise detect from content
     const isHtml =
@@ -61,7 +63,8 @@ class GmailEmailSender implements EmailSender {
       mailOptions.text = options.body
     }
 
-    await this.transporter.sendMail(mailOptions)
+    const info = await this.transporter.sendMail(mailOptions)
+    return { messageId: info.messageId }
   }
 
   /**
@@ -89,33 +92,40 @@ export const config: StepConfig = {
   type: 'cron',
   name: 'Scheduled Email Sender',
   description:
-    'Sends approved emails that are scheduled for delivery, running every 15 minutes',
+    'Sends approved emails during SF business hours (9-11 AM), running every minute',
   // cron: '*/15 * * * *', // Run every 15 minutes
-  cron: '* * * * *', // Every minute (testing only)
+  cron: '* * * * *', // Every minute
   flows: ['job-search'],
   emits: ['email.scheduled.sent', 'email.scheduled.error'],
 }
 
 /**
- * Get a random delay between 20-30 seconds
+ * Checks if the current time is within the San Francisco sending window (9-11 AM, weekdays only)
  */
-function getRandomDelay(): number {
-  return Math.floor(Math.random() * 10000) + 20000 // 20000-30000 ms (20-30 seconds)
-}
+function isWithinSendingWindow(): boolean {
+  // Get current time in SF timezone
+  const options = { timeZone: SF_TIMEZONE }
+  const sfTime = new Date().toLocaleString('en-US', options)
+  const sfDate = new Date(sfTime)
 
-/**
- * Check if it's time to send an email based on its scheduled time
- */
-function isTimeToSend(scheduledAt: string): boolean {
-  const scheduledTime = new Date(scheduledAt).getTime()
-  const currentTime = new Date().getTime()
+  const hour = sfDate.getHours()
+  const dayOfWeek = sfDate.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-  // Only send if we're within MAX_TIME_DIFF_MS of the scheduled time
-  return Math.abs(currentTime - scheduledTime) <= MAX_TIME_DIFF_MS
+  // Check if current day is a weekday (Monday-Friday) and time is between 9 AM and 11 AM SF time
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 // Monday-Friday
+  return isWeekday && hour >= SEND_START_HOUR && hour < SEND_END_HOUR
 }
 
 export async function handler(ctx: any) {
   ctx.logger.info('Starting scheduled email sending process')
+
+  // First, check if we're within the sending window (9-11 AM SF time)
+  if (!isWithinSendingWindow()) {
+    ctx.logger.info(
+      'Outside of sending window (9-11 AM SF time). No emails will be sent.'
+    )
+    return { sentCount: 0, errorCount: 0, reason: 'outside_sending_window' }
+  }
 
   // Initialize environment variables
   const supabaseUrl = process.env.SUPABASE_URL
@@ -145,24 +155,19 @@ export async function handler(ctx: any) {
   // Initialize email sender (using the modular approach)
   const emailSender = new GmailEmailSender(emailUser, emailPass)
 
-  // Get current time
-  const now = new Date()
-
   // Query for emails that are:
   // 1. Approved (is_approved = true)
   // 2. Not yet sent (sent_at is null)
   // 3. Status is Scheduled
+  // We ignore the scheduled_at time and just get the next batch of emails to send
   const { data: emails, error: queryError } = await supabase
     .from('emails')
     .select('*')
     .eq('is_approved', true)
     .eq('status', 'Scheduled')
     .is('sent_at', null)
-    .lte(
-      'scheduled_at',
-      new Date(now.getTime() + MAX_TIME_DIFF_MS).toISOString()
-    )
-    .order('scheduled_at', { ascending: true }) // Send oldest scheduled emails first
+    .order('scheduled_at', { ascending: true }) // Process oldest scheduled emails first
+    .limit(1) // Only get one email per run
 
   if (queryError) {
     ctx.logger.error(`Error querying scheduled emails: ${queryError.message}`)
@@ -174,156 +179,170 @@ export async function handler(ctx: any) {
     return { sentCount: 0, errorCount: 0 }
   }
 
-  // Filter emails that are due to be sent (within the time window)
-  const emailsDueNow = emails.filter((email) =>
-    isTimeToSend(email.scheduled_at)
-  )
-
-  if (emailsDueNow.length === 0) {
-    ctx.logger.info('No emails scheduled for current time window')
-    return { sentCount: 0, errorCount: 0 }
-  }
-
   ctx.logger.info(
-    `Found ${emailsDueNow.length} approved emails to send in the current time window`
+    `Found ${emails.length} approved emails to process during sending window`
   )
+
+  // In this implementation, we'll only send one email per run
+  // Since this runs every minute, we'll get roughly one email per minute
+  const emailToSend = emails[0]
+
+  // --- Step 1: Immediately mark as 'Sending' to prevent duplicates ---
+  const { error: lockError } = await supabase
+    .from('emails')
+    .update({ status: 'Sending' })
+    .eq('id', emailToSend.id)
+    .eq('status', 'Scheduled') // Ensure we only lock if it's still Scheduled
+
+  if (lockError) {
+    ctx.logger.error(
+      `Failed to lock email ${emailToSend.id} as 'Sending': ${lockError.message}. Skipping this run.`
+    )
+    // Don't proceed if we couldn't lock it, another process might be handling it
+    return { sentCount: 0, errorCount: 1, reason: 'lock_failed' }
+  }
+  ctx.logger.info(`Locked email ${emailToSend.id} as 'Sending'`)
+  // -----------------------------------------------------------------
 
   // Statistics tracking
   let sentCount = 0
   let errorCount = 0
+  let finalStatus: 'Sent' | 'Failed' = 'Failed' // Assume failure until success
+  let finalErrorMessage: string | null = null
+  let messageId: string | undefined = undefined
 
-  // Process emails in batches
-  for (let i = 0; i < emailsDueNow.length; i += BATCH_SIZE) {
-    const batch = emailsDueNow.slice(i, i + BATCH_SIZE)
-    ctx.logger.info(
-      `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(
-        emailsDueNow.length / BATCH_SIZE
-      )}`
-    )
+  const MAX_RETRIES = 3
+  const RETRY_DELAY_MS = 5000 // 5 seconds between retries
 
-    // Process each email in the current batch with a delay between each
-    for (let j = 0; j < batch.length; j++) {
-      const email = batch[j]
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const isHtml = emailToSend.body?.includes('<') || false
 
-      // If not the first email in the batch, add a delay
-      if (j > 0) {
-        const delay = getRandomDelay()
+      ctx.logger.info(
+        `Attempt ${attempt}/${MAX_RETRIES}: Sending email ${emailToSend.id} to ${emailToSend.to_email}`
+      )
+
+      // --- Step 2: Attempt sending ---
+      const result = await emailSender.sendEmail({
+        to: emailToSend.to_email,
+        subject: emailToSend.subject,
+        body: emailToSend.body,
+        from: emailFrom,
+        isHtml,
+      })
+
+      // --- Success ---
+      ctx.logger.info(
+        `Email ${emailToSend.id} sent successfully on attempt ${attempt}`
+      )
+      finalStatus = 'Sent'
+      messageId = result.messageId
+      sentCount = 1
+      break // Exit retry loop on success
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      finalErrorMessage = errorMessage // Store the last error
+      ctx.logger.warn(
+        `Attempt ${attempt}/${MAX_RETRIES} failed for email ${emailToSend.id}: ${errorMessage}`
+      )
+
+      if (attempt < MAX_RETRIES) {
         ctx.logger.info(
-          `Waiting ${delay / 1000} seconds before sending next email...`
+          `Waiting ${RETRY_DELAY_MS / 1000}s before next retry...`
         )
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-
-      try {
-        const isHtml = email.body?.includes('<') || false
-
-        ctx.logger.info(
-          `Sending email ${email.id} to ${email.to_email} (format: ${
-            isHtml ? 'HTML' : 'plain text'
-          })`
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+      } else {
+        // Max retries reached
+        ctx.logger.error(
+          `Email ${emailToSend.id} failed after ${MAX_RETRIES} attempts.`
         )
-
-        // Send the email
-        await emailSender.sendEmail({
-          to: email.to_email,
-          subject: email.subject,
-          body: email.body,
-          from: emailFrom,
-          isHtml, // Explicitly set if it's HTML content
-        })
-
-        // Update the email record as sent
-        const { error: updateError } = await supabase
-          .from('emails')
-          .update({
-            status: 'Sent',
-            sent_at: new Date().toISOString(),
-            is_sent: true,
-          })
-          .eq('id', email.id)
-
-        if (updateError) {
-          ctx.logger.error(
-            `Error updating email status to Sent: ${updateError.message}`
-          )
-          errorCount++
-
-          // Emit error event
-          await ctx.emit({
-            topic: 'email.scheduled.error',
-            data: {
-              emailId: email.id,
-              error: updateError.message,
-              stage: 'database-update',
-            },
-          })
-        } else {
-          sentCount++
-          ctx.logger.info(`Email ${email.id} sent to ${email.to_email}`)
-
-          // Emit success event
-          await ctx.emit({
-            topic: 'email.scheduled.sent',
-            data: {
-              emailId: email.id,
-              recipientEmail: email.to_email,
-              subject: email.subject,
-            },
-          })
-
-          // If there's a lead associated with this email, update its status
-          if (email.lead_id) {
-            const { error: leadUpdateError } = await supabase
-              .from('leads')
-              .update({
-                status: 'Email Sent',
-                // updated_at: new Date().toISOString(),
-              })
-              .eq('id', email.lead_id)
-
-            if (leadUpdateError) {
-              ctx.logger.warn(
-                `Error updating lead status for lead ${email.lead_id}: ${leadUpdateError.message}`
-              )
-            }
-          }
-        }
-      } catch (error) {
-        errorCount++
-        const errorMessage =
-          error instanceof Error ? error.message : String(error)
-        ctx.logger.error(`Error sending email ${email.id}: ${errorMessage}`)
-
-        // Update the email with error information
-        const { error: updateError } = await supabase
-          .from('emails')
-          .update({
-            status: 'Error',
-            error_message: errorMessage,
-          })
-          .eq('id', email.id)
-
-        if (updateError) {
-          ctx.logger.error(
-            `Failed to update email error status: ${updateError.message}`
-          )
-        }
-
-        // Emit error event
-        await ctx.emit({
-          topic: 'email.scheduled.error',
-          data: {
-            emailId: email.id,
-            error: errorMessage,
-            stage: 'sending',
-          },
-        })
+        errorCount = 1
       }
     }
   }
 
+  // --- Step 3: Update final status based on outcome ---
+  try {
+    const updatePayload: any = {
+      status: finalStatus,
+      error_message: finalErrorMessage, // Will be null if successful
+    }
+    if (finalStatus === 'Sent') {
+      updatePayload.sent_at = new Date().toISOString()
+      updatePayload.is_sent = true
+      updatePayload.thread_id = messageId
+    }
+
+    const { error: finalUpdateError } = await supabase
+      .from('emails')
+      .update(updatePayload)
+      .eq('id', emailToSend.id)
+
+    if (finalUpdateError) {
+      // This is problematic, the email was sent/failed, but we couldn't record it!
+      ctx.logger.error(
+        `CRITICAL: Failed to update final status for email ${emailToSend.id} to '${finalStatus}': ${finalUpdateError.message}`
+      )
+      // We already incremented sentCount/errorCount based on the *sending* outcome
+      // Consider adding specific monitoring/alerting for this scenario
+    } else {
+      ctx.logger.info(
+        `Successfully updated final status for email ${emailToSend.id} to '${finalStatus}'`
+      )
+
+      // Emit event based on final status
+      if (finalStatus === 'Sent') {
+        await ctx.emit({
+          topic: 'email.scheduled.sent',
+          data: {
+            emailId: emailToSend.id,
+            recipientEmail: emailToSend.to_email,
+            subject: emailToSend.subject,
+            threadId: messageId,
+            leadId: emailToSend.lead_id,
+          },
+        })
+        // If there's a lead associated with this email, update its status
+        if (emailToSend.lead_id) {
+          const { error: leadUpdateError } = await supabase
+            .from('leads')
+            .update({
+              status: 'Email Sent',
+            })
+            .eq('id', emailToSend.lead_id)
+
+          if (leadUpdateError) {
+            ctx.logger.warn(
+              `Error updating lead status for lead ${emailToSend.lead_id}: ${leadUpdateError.message}`
+            )
+          }
+        }
+      } else {
+        // Final status is 'Failed'
+        await ctx.emit({
+          topic: 'email.scheduled.error',
+          data: {
+            emailId: emailToSend.id,
+            error: finalErrorMessage,
+            stage: 'sending_failed_retries',
+          },
+        })
+      }
+    }
+  } catch (updateError) {
+    // Catch errors specifically from the final status update logic/emit
+    const updateErrorMessage =
+      updateError instanceof Error ? updateError.message : String(updateError)
+    ctx.logger.error(
+      `Error during final status update/emit for email ${emailToSend.id}: ${updateErrorMessage}`
+    )
+  }
+
+  // -----------------------------------------------------
+
   ctx.logger.info(
-    `Email sending complete. Successfully sent ${sentCount} emails with ${errorCount} errors.`
+    `Email sending process for ${emailToSend.id} complete. Status: ${finalStatus}.`
   )
 
   return {
