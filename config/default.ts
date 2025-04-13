@@ -13,6 +13,10 @@ export const appConfig = {
   },
   sender: {
     name: env.SENDER_NAME,
-    email: env.SENDER_EMAIL,
+  },
+  email: {
+    user: env.EMAIL_USER,
+    pass: env.EMAIL_PASS,
+    from: env.EMAIL_FROM,
   },
 }

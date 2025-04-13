@@ -3,7 +3,7 @@ import { LeadStatus } from './constants/lead-status'
 import { ApolloEmailsUpdatedEvent, EmailScheduledEvent } from './types/common'
 import { ensureTableExists } from './utils/database'
 import { calculateScheduleDate, generateEmailTemplate } from './utils/email'
-import { getOptionalEnv, getRequiredEnv } from './utils/env'
+import { getOptionalEnv } from './utils/env'
 import { initSupabaseClient } from './utils/supabase'
 
 export const config: StepConfig = {
@@ -61,8 +61,7 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
     const supabase = initSupabaseClient(ctx.logger)
 
     // Get the user's name and email for the outreach
-    const senderName = getOptionalEnv('SENDER_NAME', 'Job Seeker')
-    const senderEmail = getRequiredEnv('SENDER_EMAIL', ctx.logger)
+    const senderName = getOptionalEnv('SENDER_NAME', 'Tanush Yadav')
 
     // Query leads with found emails that are ready for outreach
     let query = supabase

@@ -6,5 +6,7 @@ export const env = cleanEnv(process.env, {
   SUPABASE_URL: str(),
   SUPABASE_ANON_KEY: str(),
   SENDER_NAME: str(),
-  SENDER_EMAIL: str(),
+  EMAIL_USER: str(),
+  EMAIL_PASS: str(),
+  EMAIL_FROM: str(),
 })

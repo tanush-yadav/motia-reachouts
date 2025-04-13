@@ -27,6 +27,10 @@
     "steps/approve-email.step.ts": {
       "x": 487.3524687436244,
       "y": 132.1155643954318
+    },
+    "steps/send-scheduled-emails.step.ts": {
+      "x": 519.3553384357112,
+      "y": 32.07756594114197
     }
   }
 }

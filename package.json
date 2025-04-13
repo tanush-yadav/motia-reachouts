@@ -16,6 +16,7 @@
     "@types/uuid": "^9.0.8",
     "axios": "^1.8.2",
     "motia": "0.1.0-beta.26",
+    "nodemailer": "^6.10.0",
     "playwright": "^1.51.1",
     "react": "^19.0.0",
     "uuid": "^9.0.1",
