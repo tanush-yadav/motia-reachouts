@@ -379,7 +379,7 @@ export function Mail({
           ) : (
             <div>
               <div className="flex items-center px-4 py-2">
-                <h1 className="text-xl font-bold">Email Templates</h1>
+                <h1 className="text-lg font-bold">Email Templates</h1>
               </div>
               <Separator />
               <div className="bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
