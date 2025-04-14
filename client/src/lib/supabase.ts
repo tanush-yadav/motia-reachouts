@@ -23,3 +23,12 @@ export type EmailType = {
   email_tracking_id: string | null
   is_approved: boolean | null
 }
+
+export type TemplateType = {
+  id: string
+  name: string
+  subject: string
+  body: string
+  created_at?: string
+  updated_at?: string
+}

@@ -1,4 +1,4 @@
-import { EmailType, supabase } from './supabase'
+import { EmailType, supabase, TemplateType } from './supabase'
 
 export async function getEmails() {
   const { data, error } = await supabase
@@ -96,4 +96,56 @@ export async function updateEmail(id: string, updates: Partial<EmailType>) {
   }
 
   return true
+}
+
+// --- Template Functions ---
+
+export async function getTemplates(): Promise<TemplateType[]> {
+  const { data, error } = await supabase
+    .from('templates')
+    .select('*')
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching templates:', error)
+    return []
+  }
+
+  return data as TemplateType[]
+}
+
+export async function updateTemplate(
+  id: string,
+  updates: { subject?: string; body?: string }
+) {
+  const { error } = await supabase
+    .from('templates')
+    .update(updates)
+    .eq('id', id)
+
+  if (error) {
+    console.error('Error updating template:', error)
+    throw error
+  }
+
+  return true
+}
+
+export async function createTemplate(template: {
+  name: string
+  subject: string
+  body: string
+}) {
+  const { data, error } = await supabase
+    .from('templates')
+    .insert(template)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error creating template:', error)
+    throw error
+  }
+
+  return data as TemplateType
 }
