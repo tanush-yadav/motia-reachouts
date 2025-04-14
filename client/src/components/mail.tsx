@@ -77,8 +77,10 @@ export function Mail({
   // Get filtered emails for the current view
   const getFilteredEmails = () => {
     if (activeTab === 'inbox') {
-      // Exclude rejected emails from inbox
-      return mails.filter((mail) => mail.is_approved !== false)
+      // Exclude rejected and sent emails from inbox
+      return mails.filter(
+        (mail) => mail.is_approved !== false && !mail.labels.includes('sent')
+      )
     } else if (activeTab === 'rejected') {
       // Only show rejected emails
       return mails.filter((mail) => mail.is_approved === false)
@@ -99,7 +101,9 @@ export function Mail({
   }
 
   // Count emails by status
-  const inboxCount = mails.filter((mail) => mail.is_approved !== false).length
+  const inboxCount = mails.filter(
+    (mail) => mail.is_approved !== false && !mail.labels.includes('sent')
+  ).length
   const rejectedCount = mails.filter(
     (mail) => mail.is_approved === false
   ).length

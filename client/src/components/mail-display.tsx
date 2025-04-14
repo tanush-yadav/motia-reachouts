@@ -44,6 +44,13 @@ import { Mail } from '../app/data'
 import { useMail } from '../app/use-mail'
 import { EmailMetadata } from './email-metadata'
 
+// Helper function to derive name from email
+const deriveNameFromEmail = (email: string): string => {
+  if (!email || !email.includes('@')) return 'Unknown'
+  const namePart = email.split('@')[0]
+  return namePart.charAt(0).toUpperCase() + namePart.slice(1)
+}
+
 interface MailDisplayProps {
   mail: Mail | null
   onEmailDeleted?: () => void
@@ -60,6 +67,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [editSubject, setEditSubject] = useState('')
   const [editBody, setEditBody] = useState('')
+  const [editToEmail, setEditToEmail] = useState('')
   const [, setMail] = useMail()
 
   React.useEffect(() => {
@@ -71,6 +79,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
         // Initialize edit fields with current values
         setEditSubject(details?.subject || '')
         setEditBody(details?.body || '')
+        setEditToEmail(details?.to_email || '')
 
         // Fetch lead details if lead_id exists
         if (details?.lead_id) {
@@ -83,6 +92,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
         setEmailDetails(null)
         setEditSubject('')
         setEditBody('')
+        setEditToEmail('')
         setLeadDetails(null)
       }
     }
@@ -149,6 +159,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
       await updateEmail(mail.id, {
         subject: editSubject,
         body: editBody,
+        to_email: editToEmail,
       })
 
       // Update local state
@@ -156,14 +167,19 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
         ...prev,
         subject: editSubject,
         body: editBody,
+        to_email: editToEmail,
       }))
 
       // Update mail object to reflect changes
       if (mail) {
+        // Derive new name based on potentially changed email
+        const newName = deriveNameFromEmail(editToEmail)
         setMail({
           selected: mail.id,
           mail: {
             ...mail,
+            name: newName,
+            email: editToEmail,
             subject: editSubject,
             text: editBody,
           },
@@ -476,6 +492,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
               </Avatar>
               <div className="grid gap-1">
                 <div className="font-semibold">{mail.name}</div>
+                {/* Subject Editing */}
                 {isEditing ? (
                   <Input
                     value={editSubject}
@@ -486,9 +503,25 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
                 ) : (
                   <div className="line-clamp-1 text-xs">{mail.subject}</div>
                 )}
-                <div className="line-clamp-1 text-xs">
-                  <span className="font-medium">To:</span> {mail.email}
-                </div>
+                {/* Email Editing */}
+                {isEditing ? (
+                  <>
+                    <Label htmlFor="editToEmail" className="sr-only">
+                      To Email
+                    </Label>
+                    <Input
+                      id="editToEmail"
+                      value={editToEmail}
+                      onChange={(e) => setEditToEmail(e.target.value)}
+                      placeholder="Recipient email"
+                      className="text-xs h-7 mt-1"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">To:</span> {mail.email}
+                  </>
+                )}
                 {emailDetails && (
                   <EmailMetadata
                     status={emailDetails.status}

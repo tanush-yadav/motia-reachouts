@@ -9,4 +9,6 @@
 - filter the jobs searched by getting a preview and making sure the job is not
 - add linkedin to job sources and create a config to for each job source and its corresponding scraping logic.
 
-- actually send emails flow from the supabase tables - by going through the UI we accept the emails we would like to send -AS OF NOW.
+- DONE actually send emails flow from the supabase tables - by going through the UI we accept the emails we would like to send -AS OF NOW.
+
+- Never repeat a reachout to a company - I see two reachouts to moonvalley as they appeared in google search.

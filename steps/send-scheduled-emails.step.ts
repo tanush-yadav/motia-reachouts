@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
 
 // Constants for configuration
-const BATCH_SIZE = 5 // Number of emails to process in each batch
-const EMAIL_DELAY_MS = 60000 // 60 second delay between emails (1 per minute)
 const SF_TIMEZONE = 'America/Los_Angeles' // San Francisco timezone
 const SEND_START_HOUR = 9 // 9 AM SF time
 const SEND_END_HOUR = 11 // 11 AM SF time
@@ -164,7 +162,6 @@ export async function handler(ctx: any) {
     .select('*')
     .eq('is_approved', true)
     .eq('status', 'Scheduled')
-    .is('sent_at', null)
     .order('scheduled_at', { ascending: true }) // Process oldest scheduled emails first
     .limit(1) // Only get one email per run
 

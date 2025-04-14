@@ -2,111 +2,145 @@
 
 ## 1. Introduction
 
-This document outlines the requirements for implementing a follow-up email scheduling system within the Auto Reachouts application. The goal is to automatically schedule and send follow-up emails to leads who haven't responded to the initial outreach, improving engagement and response rates.
+This document outlines the requirements for implementing a follow-up email scheduling system within the Auto Reachouts application (`client/` and `steps/`). The objective is to automatically schedule follow-up emails for leads who haven't responded to initial outreach, send them within the same email thread, manage their approval within a unified context, and thereby improve engagement rates.
 
 ## 2. Goals
 
-- **Automate Follow-ups**: Automatically schedule follow-up emails based on defined criteria (e.g., no reply after X days).
-- **Maintain Thread Context**: Send follow-ups as replies within the original email thread.
-- **Separate Approval**: Allow users to approve follow-up emails independently from initial emails.
-- **Improve Engagement**: Increase the likelihood of receiving responses from leads.
-- **Streamline Workflow**: Reduce manual effort required for following up.
+- **Automate Follow-ups**: Automatically schedule one follow-up email when an initial email is scheduled.
+- **Maintain Thread Context**: Send follow-up emails as replies within the original email thread using appropriate headers.
+- **Unified Approval Context**: Allow users to view and approve/reject follow-ups within the context of the initial email thread in the client UI.
+- **Improve Engagement**: Increase the likelihood of receiving responses.
+- **Streamline Workflow**: Reduce manual follow-up effort while maintaining clarity.
 
 ## 3. Functional Requirements
 
-### 3.1. Scheduling Follow-ups
+### 3.1. Scheduling Follow-ups (Backend)
 
-- **Trigger**: A follow-up should be scheduled automatically when an initial email is scheduled.
-- **Timing**: Follow-ups should be scheduled for a configurable number of days (e.g., 3-5 business days) after the initial email's scheduled send date.
-- **Template**: Use a designated "follow-up" email template. This template should be customizable.
-- **Database**: Store follow-up email details (schedule date, template, status) in the `emails` table.
+- **Trigger**: When an initial email is scheduled via `steps/schedule-email.step.ts`, a corresponding follow-up email must also be created as a _separate record_ in the database.
+- **Timing**: Follow-ups must be scheduled exactly **3 business days** after the initial email's scheduled send date. Business days exclude weekends (Saturday, Sunday).
+- **Template**: A specific email template designated for follow-ups must be used (identified by name/ID).
+- **Database**: Follow-up email details must be stored in a distinct row in the `emails` table, linked to the initial email.
 
-### 3.2. Sending Follow-ups as Replies
+### 3.2. Sending Follow-ups as Replies (Backend)
 
-- **Thread Identification**: The system must identify and store the `Message-ID` and `References` headers of the initial sent email. This is crucial for threading.
-- **Email Sender Modification**: The `EmailSender` (whether Gmail or Postal) needs to be updated to support sending emails as replies using the stored `Message-ID` and `References`.
-  - **Nodemailer (Gmail)**: Requires setting `inReplyTo` and `references` headers in `mailOptions`.
-  - **Postal**: Needs investigation on how its API supports sending replies within a thread.
-- **Subject Line**: Follow-up emails should typically reuse the original subject line, prefixed with "Re:".
+- **Thread Identification**:
+  - The `Message-ID` of the sent _initial_ email must be captured and stored in the `thread_id` column of the _initial_ email's record.
+  - The `References` header must also be stored in the `references_header` column of the _initial_ email's record.
+- **Email Sender Modification**:
+  - The `EmailSender` interface and `GmailEmailSender` implementation (`steps/send-scheduled-emails.step.ts`) must accept optional `threadId` and `references` parameters.
+  - When sending a follow-up email record, the handler must retrieve the `thread_id` and `references_header` from the parent email record.
+  - **CRITICAL**: If the parent's `thread_id` or `references_header` cannot be retrieved, the follow-up send **must be aborted**, and the follow-up email status set to 'Error'.
+  - The `GmailEmailSender` must set the `In-Reply-To` and `References` headers correctly when sending follow-ups.
+- **Subject Line**: Follow-up emails use the subject line defined in the follow-up template.
 
-### 3.3. Follow-up Approval Workflow
+### 3.3. Follow-up Management Workflow (Client)
 
-- **Separate Approval State**: Follow-up emails will have their own `is_approved` status in the database, distinct from the initial email.
-- **UI for Approval**: The client UI (`client/`) needs to be updated to display pending follow-up emails.
-- **Bulk Actions**: Implement "Select All" and "Approve Selected" functionality in the UI for efficient approval of follow-ups.
-- **Filtering**: Allow users to filter the email list to show only pending follow-up emails.
+- **Approval State**: Follow-up email records use the existing `is_approved` column (`null` initially).
+- **Primary List View (`client/src/components/mail-list.tsx`)**:
+  - This list primarily displays initial emails (`email_type='initial'`).
+  - Filtering options (e.g., tabs in `components/mail.tsx`) should allow viewing specific subsets like 'Follow-ups Pending', 'All', 'Sent', etc.
+  - Bulk approval actions via checkboxes in this list view are **removed** for V1 to favor contextual approval.
+- **Detail View (`client/src/components/mail-display.tsx`)**: **(Major Change)**
+  - When an initial email is selected, this component fetches the initial email data _and_ all associated follow-up email records linked via `parent_email_id`.
+  - The view renders the initial email's details first (subject, body, status, etc.), allowing edits if applicable.
+  - Below the initial email, the component iterates through and renders each associated follow-up record in sequence (e.g., "Follow-up 1").
+  - For each rendered follow-up:
+    - Display its scheduled date and current status (`FOLLOWUP_PENDING`, `Approved`, `Rejected`, `Sent`, `Failed`).
+    - Display its subject and body. Make these fields editable (using controlled inputs) if the follow-up's status is `FOLLOWUP_PENDING` or `Scheduled`. Provide a save mechanism using the existing `updateEmail` service function.
+    - Provide **individual Approve/Reject buttons** specific to _this_ follow-up record. These buttons trigger corresponding service functions (`approveFollowUp(followUpId)`, `rejectFollowUp(followUpId)`). Disable buttons based on the follow-up's current `is_approved` status.
 
-### 3.4. Tracking and Status Updates
+### 3.4. Tracking and Status Updates (Backend)
 
-- **Follow-up Status**: Introduce new statuses like `FollowUpScheduled`, `FollowUpPendingApproval`, `FollowUpSent`, `FollowUpError`.
-- **Lead Status Update**: Update the `leads` table status to reflect when a follow-up has been sent or if an error occurred.
-- **Cancellation**: Implement logic to automatically cancel a scheduled follow-up if a reply is detected from the lead before the follow-up send date (requires reply detection, see Section 5).
+- **Follow-up Status**: A new status `FOLLOWUP_PENDING` is required, set upon creation. Other statuses (`Sending`, `Sent`, `Failed`, `Scheduled` after approval) are managed as usual.
+- **Lead Status Update**: The `leads` table status is not directly changed by follow-up actions.
+- **Cancellation (V1 Limitation)**: No automatic cancellation based on reply detection. Users must manually reject/delete pending follow-ups via the detail view if a reply is received.
 
 ## 4. Technical Implementation Plan
 
 ### 4.1. Database Schema Changes (`emails` table)
 
-- Add `parent_email_id` (UUID, nullable): Links a follow-up email to its original email.
-- Add `email_type` (TEXT, default 'initial'): Differentiates between 'initial' and 'followup' emails.
-- Add `thread_id` (TEXT, nullable): Stores the `Message-ID` of the initial email for threading.
-- Add `references_header` (TEXT, nullable): Stores the `References` header value for threading.
+Execute migration `migrations/<timestamp>_follow_up_setup.sql`:
 
-**(Action)**: Create a new SQL migration script (`follow-up-setup.sql`) to apply these changes.
+```sql
+-- Add columns to link follow-ups and store threading info
+ALTER TABLE emails
+ADD COLUMN parent_email_id UUID REFERENCES emails(id) ON DELETE SET NULL,
+ADD COLUMN email_type TEXT NOT NULL DEFAULT 'initial', -- 'initial' or 'followup'
+ADD COLUMN thread_id TEXT, -- Stores Message-ID of the initial email
+ADD COLUMN references_header TEXT; -- Stores References header value
+
+-- Add the new status for follow-ups pending approval
+-- Modify check constraint or ENUM for 'status' column to include 'FOLLOWUP_PENDING'
+-- Example for ENUM: ALTER TYPE email_status_enum ADD VALUE 'FOLLOWUP_PENDING';
+
+-- Add index for faster lookup of follow-ups by parent
+CREATE INDEX IF NOT EXISTS idx_emails_parent_email_id ON emails (parent_email_id);
+```
 
 ### 4.2. Backend (`steps/`) Changes
 
-- **`schedule-email.step.ts`**:
-  - When scheduling an initial email (`email_type = 'initial'`), also create a _second_ email record with `email_type = 'followup'`.
-  - Link the follow-up to the initial email using `parent_email_id`.
-  - Calculate the `scheduled_at` date for the follow-up (e.g., initial send date + 3 days).
-  - Use a designated 'follow-up' template.
-  - Set the follow-up's initial status to `FollowUpScheduled` and `is_approved = null`.
-  - Emit an `email.followup.approval.required` event.
-- **`send-scheduled-emails.step.ts`**:
-  - Modify the query to fetch _approved_ emails (both initial and follow-up) scheduled for sending.
-  - **Crucially**: Update the `emailSender.sendEmail` call. If `email_type` is 'followup', pass the `thread_id` and `references_header` from the parent email record to the sender function.
-  - After sending the _initial_ email, retrieve its `Message-ID` from the sending service (Gmail/Postal) and update the initial email record's `thread_id` and `references_header` fields in the database. This is essential for the follow-up to be threaded correctly.
-- **`EmailSender` Interface/Implementations**:
-  - Update the `EmailSender` interface and its implementations (`GmailEmailSender`, potentially `PostalEmailSender`) to accept optional `threadId` and `references` parameters.
-  - Implement the logic to set the correct headers (`In-Reply-To`, `References`) when these parameters are provided.
+- **`steps/schedule-email.step.ts`**:
+  - Modify `handler`: After creating the initial email (`email_type='initial'`), create a second record:
+    - `email_type = 'followup'`, `parent_email_id = <initial_email_id>`.
+    - Calculate `scheduled_at` (initial `scheduled_at` + 3 business days via utility function).
+    - Use designated follow-up template content.
+    - `status = 'FOLLOWUP_PENDING'`, `is_approved = null`.
+    - Copy `lead_id`, `to_email`, etc.
+- **`steps/send-scheduled-emails.step.ts`**:
+  - **Query Modification**: Fetch emails where `is_approved = true` AND (`status = 'Scheduled'` OR `status = 'FOLLOWUP_PENDING'`) AND `scheduled_at <= now()`. (Adjust status logic if approval changes status).
+  - **Email Sending Logic**:
+    - _After_ sending `email_type = 'initial'`, retrieve `messageId` and update `thread_id` and `references_header` on the initial email record. Handle errors.
+    - _Before_ sending `email_type = 'followup'`:
+      - Query parent using `parent_email_id` for `thread_id`, `references_header`.
+      - **CRITICAL**: If this query fails, or if `thread_id` or `references_header` are null on the parent record, the sending attempt for this follow-up email **must be aborted**. The follow-up email's status should be updated to 'Error' with an appropriate message (e.g., 'Parent thread info missing'), and the process should continue to the next email.
+      - Pass `thread_id`, `references_header` to `emailSender.sendEmail`.
+  - **`EmailSender` Interface & `GmailEmailSender` Class**:
+    - Update `sendEmail` signature: add optional `threadId?: string`, `references?: string`.
+    - Update `GmailEmailSender`: add `inReplyTo: threadId`, `references: references` to `mailOptions` if provided.
 
-### 4.3. Client UI (`client/`) Changes
+### 4.3. Client UI (`client/src/`) Changes
 
 - **`lib/emailService.ts`**:
-  - Update `getEmails` to potentially filter by `email_type` or fetch related emails.
-  - Add functions to approve/reject follow-up emails (similar to `updateApprovalStatus`).
-  - Modify `convertEmailToMailFormat` to visually distinguish follow-up emails (e.g., different icon, label).
-- **`components/mail.tsx` (or relevant UI component)**:
-  - Display follow-up emails in the list.
-  - Add filtering options for 'Initial Emails', 'Follow-ups Pending Approval'.
-  - Implement checkbox selection for emails.
-  - Add "Approve Selected" and potentially "Reject Selected" buttons.
-  - Ensure the display clearly shows if an email is an initial outreach or a follow-up.
+  - Modify `getEmailById(id)`: Fetch email with `id`. If it's 'initial', also query for emails where `parent_email_id = id`. Return `{ ...initialEmail, followUps: [...] }`.
+  - Add: `approveFollowUp(followUpId: string)` and `rejectFollowUp(followUpId: string)` to update `is_approved` for a single ID.
+  - Ensure `updateEmail(id, updates)` works for both initial and follow-up IDs.
+  - Modify `convertEmailToMailFormat`: Include `email_type`.
+- **`components/mail.tsx`**:
+  - Implement filter controls (e.g., tabs) for 'All', 'Initial', 'Follow-ups Pending', 'Sent', etc. Logic updates the `getEmails` query based on the filter.
+  - Remove bulk action buttons related to list selection.
+- **`components/mail-list.tsx`**:
+  - Primarily display initial emails based on data from `components/mail.tsx`.
+  - Remove list item checkboxes.
+  - Visually indicate email type if filter shows mixed types.
+- **`components/mail-display.tsx`**: **(Major Change)**
+  - Fetch data using the enhanced `getEmailById`.
+  - Render the initial email section (editable subject/body/to_email if status allows).
+  - Iterate through `followUps` array:
+    - Render a distinct section for each follow-up.
+    - Display follow-up's schedule date, status.
+    - Render editable subject/body for the follow-up (if status allows).
+    - Render individual Approve/Reject buttons for the follow-up, calling `approveFollowUp`/`rejectFollowUp`.
 
 ## 5. Considerations and Future Enhancements
 
-- **Reply Detection**: How will the system detect if a lead has replied? This is critical to cancel scheduled follow-ups. Options:
-  - **Manual**: User manually updates the lead status.
-  - **IMAP Integration**: Connect to the sending mailbox via IMAP to monitor for replies (complex).
-  - **Webhook (if supported)**: If the email service (like Postal) provides webhooks for replies.
-  - **Assumption**: For V1, we might assume manual cancellation or rely on the user not approving follow-ups if a reply was received.
-- **Multiple Follow-ups**: This design focuses on one follow-up. Supporting sequences (2nd follow-up, 3rd follow-up) would require extending the `email_type` logic and scheduling process.
-- **Template Management**: Need a way to manage and select different follow-up templates.
-- **Error Handling**: Robust error handling for follow-up scheduling and sending. What happens if retrieving the `Message-ID` fails?
-- **Throttling/Rate Limiting**: Ensure follow-up sending respects the same batching and delay logic as initial emails.
-- **Unsubscribe Handling**: Ensure follow-ups are not sent if a user unsubscribes.
+- **Reply Detection (V1 Limitation)**: Manual user action required in V1.
+- **Multiple Follow-ups**: Current design allows extension but implementation focuses on one.
+- **Template Management**: Separate requirement for managing follow-up templates.
+- **Error Handling**: Define behavior for specific failure points (fetching parent thread info, updating thread info).
+- **Business Day Calculation**: Utility function needed; V1 may ignore holidays.
 
 ## 6. Success Metrics
 
-- Number of follow-up emails successfully sent.
-- Open and click rates for follow-up emails (requires reliable tracking).
-- Increase in overall reply rate compared to initial outreach alone.
-- User feedback on the ease of managing follow-up approvals.
+- Count of follow-up emails scheduled and sent successfully.
+- Comparison of reply rates (if tracked).
+- User feedback on the unified detail view workflow.
 
 ## 7. Rollout Plan
 
-1. **Backend Development**: Implement database changes and backend step modifications.
-2. **Email Sender Update**: Modify email sending logic for threading.
-3. **Client UI Development**: Build the UI components for follow-up management and approval.
-4. **Testing**: Thoroughly test scheduling, sending (as replies), and approval workflows.
-5. **Deployment**: Deploy backend and frontend changes.
+1.  Implement/test database schema changes.
+2.  Implement/test backend step changes (`schedule-email`, `send-scheduled-emails`).
+3.  Implement/test `EmailSender` modifications.
+4.  Implement/test client data service changes (`emailService.ts`).
+5.  Implement/test client UI changes (`mail.tsx`, `mail-list.tsx`, `mail-display.tsx`).
+6.  Conduct end-to-end testing focusing on the detail view interaction.
+7.  Deploy.
