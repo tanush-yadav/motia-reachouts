@@ -4,8 +4,8 @@ import nodemailer from 'nodemailer'
 
 // Constants for configuration
 const SF_TIMEZONE = 'America/Los_Angeles' // San Francisco timezone
-const SEND_START_HOUR = 9 // 9 AM SF time
-const SEND_END_HOUR = 11 // 11 AM SF time
+const SEND_START_HOUR = 8 // 8 AM SF time
+const SEND_END_HOUR = 9 // 9 AM SF time
 
 /**
  * Email sender service interface for modularity
