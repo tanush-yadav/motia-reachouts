@@ -17,6 +17,7 @@ interface EmailSender {
     body: string
     from: string
     isHtml?: boolean
+    threadId?: string
   }): Promise<{ messageId?: string }>
 }
 
@@ -39,6 +40,7 @@ class GmailEmailSender implements EmailSender {
     body: string
     from: string
     isHtml?: boolean
+    threadId?: string
   }): Promise<{ messageId?: string }> {
     // Check if the content is HTML by looking for HTML tags
     // Default to true if isHtml is explicitly set, otherwise detect from content
@@ -51,6 +53,12 @@ class GmailEmailSender implements EmailSender {
       from: options.from,
       to: options.to,
       subject: options.subject,
+    }
+
+    // Add threading headers if threadId is provided
+    if (options.threadId) {
+      mailOptions.inReplyTo = options.threadId
+      mailOptions.references = options.threadId
     }
 
     if (isHtml) {
@@ -90,14 +98,14 @@ export const config: StepConfig = {
   type: 'cron',
   name: 'Scheduled Email Sender',
   description:
-    'Sends approved emails during SF business hours (9-11 AM), running every minute',
+    'Sends approved emails during SF business hours (8-9 AM), running every minute',
   cron: '* * * * *', // Every minute
   flows: ['job-search'],
   emits: ['email.scheduled.sent', 'email.scheduled.error'],
 }
 
 /**
- * Checks if the current time is within the San Francisco sending window (9-11 AM, weekdays only)
+ * Checks if the current time is within the San Francisco sending window (8-9 AM, weekdays only)
  */
 function isWithinSendingWindow(): boolean {
   // Get current time in SF timezone
@@ -108,7 +116,7 @@ function isWithinSendingWindow(): boolean {
   const hour = sfDate.getHours()
   const dayOfWeek = sfDate.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-  // Check if current day is a weekday (Monday-Friday) and time is between 9 AM and 11 AM SF time
+  // Check if current day is a weekday (Monday-Friday) and time is between 8 AM and 9 AM SF time
   const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 // Monday-Friday
   return isWeekday && hour >= SEND_START_HOUR && hour < SEND_END_HOUR
 }
@@ -116,10 +124,10 @@ function isWithinSendingWindow(): boolean {
 export async function handler(ctx: any) {
   ctx.logger.info('Starting scheduled email sending process')
 
-  // First, check if we're within the sending window (9-11 AM SF time)
+  // First, check if we're within the sending window (8-9 AM SF time)
   if (!isWithinSendingWindow()) {
     ctx.logger.info(
-      'Outside of sending window (9-11 AM SF time). No emails will be sent.'
+      'Outside of sending window (8-9 AM SF time). No emails will be sent.'
     )
     return { sentCount: 0, errorCount: 0, reason: 'outside_sending_window' }
   }
@@ -225,6 +233,8 @@ export async function handler(ctx: any) {
         body: emailToSend.body,
         from: emailFrom,
         isHtml,
+        // Pass thread_id only if it exists (i.e., for follow-ups)
+        threadId: emailToSend.thread_id || undefined,
       })
 
       // --- Success ---

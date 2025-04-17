@@ -35,6 +35,10 @@
     "steps/schedule-follow-ups.step.ts": {
       "x": 787.2792804480105,
       "y": 373.42310664924344
+    },
+    "steps/trigger-followups.step.ts": {
+      "x": 1062.3755868544602,
+      "y": 54.02347417840376
     }
   }
 }

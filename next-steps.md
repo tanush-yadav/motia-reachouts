@@ -12,3 +12,5 @@
 - DONE actually send emails flow from the supabase tables - by going through the UI we accept the emails we would like to send -AS OF NOW.
 
 - Never repeat a reachout to a company - I see two reachouts to moonvalley as they appeared in google search.
+
+- Lead verification, only high qual leads with generalised personalisation.
