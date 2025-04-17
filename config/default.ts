@@ -19,4 +19,7 @@ export const appConfig = {
     pass: env.EMAIL_PASS,
     from: env.EMAIL_FROM,
   },
+  firecrawl: {
+    apiKey: env.FIRECRAWL_API_KEY,
+  },
 }

@@ -9,4 +9,5 @@ export const env = cleanEnv(process.env, {
   EMAIL_USER: str(),
   EMAIL_PASS: str(),
   EMAIL_FROM: str(),
+  FIRECRAWL_API_KEY: str(),
 })

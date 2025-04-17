@@ -9,7 +9,6 @@ import { getRequiredEnv } from './utils/env'
 import { initSupabaseClient } from './utils/supabase'
 import {
   createApiTrackingEntry,
-  getJobId,
   trackApiCall,
 } from './utils/tracking'
 
@@ -24,19 +23,38 @@ export const config: StepConfig = {
 }
 
 export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
-  ctx.logger.info(
-    `Processing Apollo email lookups for ${args.leadsCount} leads`
-  )
+  // Check for jobId immediately
+  if (!args.jobId) {
+    ctx.logger.error('No jobId provided in JobDetailsScrapedEvent')
+    throw new Error('jobId is required for this step')
+  }
 
-  // Get job ID for tracking
-  const jobId = getJobId(args.query, args.role)
-  ctx.logger.info(`Using job ID: ${jobId} for tracking`)
+  ctx.logger.info(
+    `Processing Apollo email lookups for job ${args.jobId} with ${args.leadsCount} leads`
+  )
 
   // Verify Apollo API key is present
   const apolloApiKey = getRequiredEnv('APOLLO_API_KEY', ctx.logger)
 
   // Initialize Supabase client
   const supabase = initSupabaseClient(ctx.logger)
+
+  // Update job status (only status and updated_at)
+  try {
+    const { error: updateError } = await supabase
+      .from('jobs')
+      .update({
+        status: 'PROCESSING',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', args.jobId)
+
+    if (updateError) {
+      ctx.logger.error(`Failed to update job status: ${updateError.message}`)
+    }
+  } catch (err) {
+    ctx.logger.error(`Error updating job status: ${err instanceof Error ? err.message : String(err)}`)
+  }
 
   // Query leads with LinkedIn URLs but no emails
   const { data: leads, error: queryError } = await supabase
@@ -45,6 +63,7 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
     .is('contact_email', null)
     .not('contact_linkedin_url', 'is', null)
     .eq('status', LeadStatus.SCRAPED)
+    .eq('jobId', args.jobId) // Filter by jobId
     .limit(100) // Process in batches to avoid rate limits
 
   if (queryError) {
@@ -54,11 +73,12 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
 
   if (!leads || leads.length === 0) {
     ctx.logger.info(
-      'No leads found that need email lookup, but continuing the flow'
+      `No leads found that need email lookup for job ${args.jobId}, but continuing the flow`
     )
 
     // Create an empty result to continue the flow
     const emptyResult: ApolloEmailsUpdatedEvent = {
+      jobId: args.jobId, // Include the jobId
       query: args.query,
       role: args.role,
       location: args.location,
@@ -75,7 +95,7 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
     return emptyResult
   }
 
-  ctx.logger.info(`Found ${leads.length} leads that need email lookup`)
+  ctx.logger.info(`Found ${leads.length} leads that need email lookup for job ${args.jobId}`)
 
   let emailsFound = 0
   let errors = 0
@@ -93,7 +113,7 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
       )
 
       // Create tracking entry for this API call
-      const tracking = createApiTrackingEntry(jobId, 'apollo', 'people/match', {
+      const tracking = createApiTrackingEntry(args.jobId, 'apollo', 'people/match', {
         linkedin_url: lead.contact_linkedin_url,
       })
 
@@ -159,10 +179,28 @@ export async function handler(args: JobDetailsScrapedEvent, ctx: any) {
   }
 
   ctx.logger.info(
-    `Finished processing. Found ${emailsFound} emails out of ${leads.length} leads. Errors: ${errors}`
+    `Finished processing email lookups for job ${args.jobId}. Found ${emailsFound} emails out of ${leads.length} leads. Errors: ${errors}`
   )
 
+  // Update job status with email lookup results (only status and updated_at)
+  try {
+    const { error: updateError } = await supabase
+      .from('jobs')
+      .update({
+        status: 'PROCESSING',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', args.jobId)
+
+    if (updateError) {
+      ctx.logger.error(`Failed to update job status: ${updateError.message}`)
+    }
+  } catch (err) {
+    ctx.logger.error(`Error updating job status: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   const result: ApolloEmailsUpdatedEvent = {
+    jobId: args.jobId, // Include the jobId
     query: args.query,
     role: args.role,
     location: args.location,

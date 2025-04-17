@@ -16,7 +16,7 @@ import { initSupabaseClient } from './utils/supabase'
 
 export const config: StepConfig = {
   type: 'event',
-  name: 'Job Details Scraper',
+  name: 'YC Job Details Scraper',
   description: 'Scrapes job details and company information from job URLs',
   subscribes: ['job.urls.collected'],
   emits: ['job.details.scraped'],

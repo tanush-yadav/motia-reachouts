@@ -10,6 +10,7 @@
     "motia"
   ],
   "dependencies": {
+    "@mendable/firecrawl-js": "^1.24.0",
     "@motiadev/core": "0.1.0-beta.26",
     "@motiadev/workbench": "0.1.0-beta.26",
     "@supabase/supabase-js": "^2.41.0",

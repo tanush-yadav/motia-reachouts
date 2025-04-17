@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@mendable/firecrawl-js':
+        specifier: ^1.24.0
+        version: 1.24.0
       '@motiadev/core':
         specifier: 0.1.0-beta.26
         version: 0.1.0-beta.26(@types/node@22.14.0)(typescript@5.7.3)
@@ -411,6 +414,10 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@mendable/firecrawl-js@1.24.0':
+    resolution: {integrity: sha512-UWcyeZm23OmfskRamaT0MERn6jAmVjFsDh9/FIuj4YmG8VCZw9FvLGEioXKhTAITZ8uCeGTGarcybF86txIpkA==}
+    engines: {node: '>=22.0.0'}
 
   '@motiadev/core@0.1.0-beta.26':
     resolution: {integrity: sha512-pyw72HVf/QbHVVR/ZqS/sg6lAryWFX3gOTlkmHIVZ555oQnAUwQyyJwVvdxgi2mQrClLxaDrVq6yM0CLeMpz/w==}
@@ -2698,6 +2705,9 @@ packages:
       eslint: ^8.57.0 || ^9.0.0
       typescript: '>=4.8.4 <5.9.0'
 
+  typescript-event-target@1.1.1:
+    resolution: {integrity: sha512-dFSOFBKV6uwaloBCCUhxlD3Pr/P1a/tJdcmPrTXCHlEFD3faj0mztjcGn6VBAhQ0/Bdy8K3VWrrqwbt/ffsYsg==}
+
   typescript@5.7.3:
     resolution: {integrity: sha512-84MVSjMEHP+FQRPy3pX9sTVV/INIex71s9TL2Gm5FG/WG1SqXeKyZ0k7/blY/4FdOzI12CBy1vGc4og/eus0fw==}
     engines: {node: '>=14.17'}
@@ -3254,6 +3264,15 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  '@mendable/firecrawl-js@1.24.0':
+    dependencies:
+      axios: 1.8.4
+      typescript-event-target: 1.1.1
+      zod: 3.24.2
+      zod-to-json-schema: 3.24.5(zod@3.24.2)
+    transitivePeerDependencies:
+      - debug
 
   '@motiadev/core@0.1.0-beta.26(@types/node@22.14.0)(typescript@5.7.3)':
     dependencies:
@@ -5736,6 +5755,8 @@ snapshots:
       typescript: 5.7.3
     transitivePeerDependencies:
       - supports-color
+
+  typescript-event-target@1.1.1: {}
 
   typescript@5.7.3: {}
 

@@ -12,9 +12,11 @@ export interface Lead {
   contact_email?: string | null
   status: string
   error_message?: string
+  jobId?: string
 }
 
 export interface BaseEvent {
+  jobId: string
   query: string
   role: string
   location: string
@@ -40,7 +42,7 @@ export interface ApolloEmailsUpdatedEvent extends BaseEvent {
   totalLeads: number
   emailsFound: number
   errors: number
-  leadIds?: string[] // For processing specific leads
+  leadIds?: string[]
 }
 
 export interface EmailScheduledEvent extends BaseEvent {

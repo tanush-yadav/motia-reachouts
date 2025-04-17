@@ -1,9 +1,9 @@
 import { StepConfig } from '@motiadev/core'
 import axios from 'axios'
 import { JobUrlsCollectedEvent } from './types/common'
+import { updateJobStatus } from './utils/database'
 import { getRequiredEnv } from './utils/env'
 import { initSupabaseClient } from './utils/supabase'
-
 export const config: StepConfig = {
   type: 'event',
   name: 'Job URL Collector',
@@ -14,6 +14,7 @@ export const config: StepConfig = {
 }
 
 interface JobQuery {
+  jobId: string
   query: string
   role: string
   location: string
@@ -35,16 +36,20 @@ interface SearchOptions {
 
 export async function handler(args: JobQuery, ctx: any) {
   ctx.logger.info(
-    `Processing Google dorks for: ${args.role} in ${args.location}`
+    `Processing Google dorks for job ${args.jobId}: ${args.role} in ${args.location}`
   )
 
   if (!args.google_dorks || args.google_dorks.length === 0) {
-    ctx.logger.error('No Google dorks provided')
+    ctx.logger.error(`No Google dorks provided for job ${args.jobId}`)
+    await updateJobStatus(args.jobId, 'ERROR', 'No Google dorks provided', ctx.logger)
     throw new Error('No Google dorks provided')
   }
 
   const SERP_API_KEY = getRequiredEnv('SERP_API_KEY', ctx.logger)
   const supabase = initSupabaseClient(ctx.logger)
+
+  // Update job status to PROCESSING
+  await updateJobStatus(args.jobId, 'PROCESSING', null, ctx.logger)
 
   const uniqueJobUrls: JobUrl[] = []
   const limit = args.limit || 10
@@ -96,19 +101,29 @@ export async function handler(args: JobQuery, ctx: any) {
   }
 
   ctx.logger.info(
-    `Found ${uniqueJobUrls.length} job URLs before database validation`
+    `Found ${uniqueJobUrls.length} job URLs before database validation for job ${args.jobId}`
   )
 
   // If we didn't find any URLs, try to increase the limit and search again
   if (uniqueJobUrls.length === 0) {
-    ctx.logger.warn('No job URLs found, trying broader search parameters')
-    return {
+    ctx.logger.warn(`No job URLs found for job ${args.jobId}, trying broader search parameters`)
+
+    // Update job status based on result
+    const emptyResult: JobUrlsCollectedEvent = {
+      jobId: args.jobId,
       query: args.query,
       role: args.role,
       location: args.location,
       jobUrls: [],
       count: 0,
     }
+
+    await ctx.emit({
+      topic: 'job.urls.collected',
+      data: emptyResult,
+    })
+
+    return emptyResult
   }
 
   // Filter out URLs that already exist in the database
@@ -124,7 +139,7 @@ export async function handler(args: JobQuery, ctx: any) {
     filteredJobUrls.length < uniqueJobUrls.length
   ) {
     ctx.logger.info(
-      `After filtering, only ${filteredJobUrls.length}/${limit} URLs remain. Will try to fetch more.`
+      `After filtering, only ${filteredJobUrls.length}/${limit} URLs remain for job ${args.jobId}. Will try to fetch more.`
     )
 
     // Calculate how many more we need
@@ -174,11 +189,12 @@ export async function handler(args: JobQuery, ctx: any) {
   }
 
   ctx.logger.info(
-    `Final collection: ${filteredJobUrls.length} new job URLs after filtering`
+    `Final collection: ${filteredJobUrls.length} new job URLs after filtering for job ${args.jobId}`
   )
 
   // Prepare event data
   const eventData: JobUrlsCollectedEvent = {
+    jobId: args.jobId,
     query: args.query,
     role: args.role,
     location: args.location,
