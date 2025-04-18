@@ -5,7 +5,7 @@ import { LeadStatus } from './constants/lead-status'
 import {
   JobDetailsScrapedEvent,
   JobUrlsCollectedEvent,
-  Lead,
+  Lead as OriginalLead,
 } from './types/common'
 import {
   findBestContact,
@@ -29,6 +29,7 @@ interface JobPageDetails {
   company_name?: string
   job_description?: string
   company_url?: string
+  is_remote?: boolean
 }
 
 interface CompanyPageDetails {
@@ -40,6 +41,10 @@ interface CompanyPageDetails {
     title?: string
     linkedin_url?: string
   }[]
+}
+
+interface Lead extends OriginalLead {
+  is_remote?: boolean
 }
 
 export async function handler(args: JobUrlsCollectedEvent, ctx: any) {
@@ -69,7 +74,6 @@ export async function handler(args: JobUrlsCollectedEvent, ctx: any) {
 
   // Initialize Supabase client
   const supabase = initSupabaseClient(ctx.logger)
-
   const browser = await chromium.launch({ headless: true })
   const leadsData: Lead[] = []
 
@@ -97,6 +101,15 @@ export async function handler(args: JobUrlsCollectedEvent, ctx: any) {
 
         // Step 1: Scrape job page details
         const jobDetails = await scrapeJobPage(browser, jobData.url, ctx.logger)
+
+        // Step 1.5: Check if the job is remote
+        if (!jobDetails.is_remote) {
+          ctx.logger.info(
+            `Skipping non-remote job: ${jobData.url} (Company: ${jobDetails.company_name}, Role: ${jobDetails.role_title})`
+          )
+          skippedCount++
+          continue // Skip to the next job
+        }
 
         // Step 2: If we have a company URL, scrape company details
         let companyDetails = null
@@ -129,6 +142,7 @@ export async function handler(args: JobUrlsCollectedEvent, ctx: any) {
           contact_linkedin_url: contactInfo?.linkedin_url,
           contact_email: null,
           status: LeadStatus.SCRAPED,
+          is_remote: jobDetails.is_remote,
         }
 
         // Save to database using Supabase
@@ -363,6 +377,30 @@ async function scrapeJobPage(
       logger.info(
         `Job description extracted: ${jobDetails.job_description.length} characters`
       )
+    }
+
+    // Extract location details and check for remote
+    jobDetails.is_remote = false // Default to false
+    const companyDetailsDiv = await page.$('.company-details')
+    if (companyDetailsDiv) {
+      const detailItems = await companyDetailsDiv.$$eval(
+        'div.text-gray-500',
+        (divs) => divs.map((div) => div.innerText.trim())
+      )
+      logger.info(`Found company detail items: ${detailItems.join(', ')}`)
+
+      // First, check if any detail item contains location information with remote
+      for (const itemText of detailItems) {
+        const lowerText = itemText.toLowerCase()
+        // Look for "Remote" anywhere in the job details
+        if (lowerText.includes('remote')) {
+          logger.info(`Identified as remote job: ${itemText}`)
+          jobDetails.is_remote = true
+          break // Found remote, no need to check further
+        }
+      }
+    } else {
+      logger.info('Could not find company-details div for location check.')
     }
   } catch (error) {
     logger.error(`Error scraping job page: ${error}`)

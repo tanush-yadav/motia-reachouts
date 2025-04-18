@@ -19,6 +19,10 @@ export type EmailType = {
   delivery_metrics: { retries: number }
   attachments: string[] | null
   body: string | null
+  body_1: string | null
+  body_2: string | null
+  body_3: string | null
+  approved_variation: number | null
   bcc: string | null
   email_tracking_id: string | null
   is_approved: boolean | null
@@ -31,4 +35,22 @@ export type TemplateType = {
   body: string
   created_at?: string
   updated_at?: string
+}
+
+export type LeadType = {
+  id: string
+  job_url: string
+  company_url: string | null
+  company_website: string | null
+  role_title: string | null
+  company_name: string | null
+  job_description: string | null
+  contact_name: string | null
+  contact_title: string | null
+  contact_linkedin_url: string | null
+  contact_email: string | null
+  status: string
+  error_message: string | null
+  created_at: string
+  updated_at: string
 }

@@ -13,12 +13,12 @@
       "y": 524
     },
     "steps/lookup-apollo-emails.step.ts": {
-      "x": 68,
-      "y": 940
+      "x": -261.2753952124783,
+      "y": 804.2986250033423
     },
     "steps/schedule-email.step.ts": {
-      "x": 81.5,
-      "y": 1148
+      "x": 117.42095220499763,
+      "y": 848.6587316250196
     },
     "steps/scrape-job-details.step.ts": {
       "x": 70,
@@ -39,6 +39,14 @@
     "steps/trigger-followups.step.ts": {
       "x": 1062.3755868544602,
       "y": 54.02347417840376
+    },
+    "steps/generate-variations.step.py": {
+      "x": 510.23745904209204,
+      "y": 711.8535131226416
+    },
+    "steps/yc-scrape-job-details.step.ts": {
+      "x": 61,
+      "y": 608
     }
   }
 }

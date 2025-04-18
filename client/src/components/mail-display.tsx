@@ -26,6 +26,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Tooltip,
@@ -119,7 +125,7 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
     }
   }
 
-  const handleApproval = async (approve: boolean) => {
+  const handleApproval = async (approve: boolean, variationNumber?: number) => {
     if (!mail?.id) return
 
     try {
@@ -129,12 +135,13 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
         setIsRejecting(true)
       }
 
-      await updateApprovalStatus(mail.id, approve)
+      await updateApprovalStatus(mail.id, approve, variationNumber)
 
       // Update local state
       setEmailDetails((prev) => ({
         ...prev,
         is_approved: approve,
+        approved_variation: approve ? variationNumber : null,
       }))
     } catch (error) {
       console.error(`Failed to ${approve ? 'approve' : 'reject'} email:`, error)
@@ -278,57 +285,68 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
             <TooltipContent>Delete</TooltipContent>
           </Tooltip>
           <Separator orientation="vertical" className="mx-1 h-6" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={
-                  !mail || isApproving || emailDetails?.is_approved === true
-                }
-                onClick={() => handleApproval(true)}
-                className={
-                  emailDetails?.is_approved === true ? 'bg-green-50' : ''
-                }
-              >
-                {isApproving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle className="h-4 w-4" />
-                )}
-                <span className="sr-only">Approve</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {emailDetails?.is_approved === true ? 'Approved' : 'Approve'}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={
-                  !mail || isRejecting || emailDetails?.is_approved === false
-                }
-                onClick={() => handleApproval(false)}
-                className={
-                  emailDetails?.is_approved === false ? 'bg-red-50' : ''
-                }
-              >
-                {isRejecting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                <span className="sr-only">Reject</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {emailDetails?.is_approved === false ? 'Rejected' : 'Reject'}
-            </TooltipContent>
-          </Tooltip>
-          <Separator orientation="vertical" className="mx-1 h-6" />
+          {/* Only show top approval buttons when no variations */}
+          {!emailDetails || (!emailDetails.body_1 && !emailDetails.body_2 && !emailDetails.body_3) ? (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={
+                      !mail || isApproving || emailDetails?.is_approved === true
+                    }
+                    onClick={() => handleApproval(true)}
+                    className={
+                      emailDetails?.is_approved === true ? 'bg-green-50' : ''
+                    }
+                  >
+                    {isApproving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">Approve</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {emailDetails?.is_approved === true ? 'Approved' : 'Approve'}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={
+                      !mail || isRejecting || emailDetails?.is_approved === false
+                    }
+                    onClick={() => handleApproval(false)}
+                    className={
+                      emailDetails?.is_approved === false ? 'bg-red-50' : ''
+                    }
+                  >
+                    {isRejecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">Reject</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {emailDetails?.is_approved === false ? 'Rejected' : 'Reject'}
+                </TooltipContent>
+              </Tooltip>
+              <Separator orientation="vertical" className="mx-1 h-6" />
+            </>
+          ) : (
+            <div className="pl-1 pr-1 text-xs text-muted-foreground">
+              {emailDetails?.is_approved
+                ? `Variation ${emailDetails.approved_variation} approved`
+                : "Select a variation to approve"}
+            </div>
+          )}
           {/* Edit/Save buttons */}
           {isEmailEditable && (
             <>
@@ -572,6 +590,156 @@ export function MailDisplay({ mail, onEmailDeleted }: MailDisplayProps) {
                 placeholder="Email body"
                 className="w-full min-h-[200px]"
               />
+            ) : emailDetails && (emailDetails.body_1 || emailDetails.body_2 || emailDetails.body_3) ? (
+              <div className="space-y-4">
+                <Tabs defaultValue="var1" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="var1">
+                      Variation 1
+                      {emailDetails.is_approved && emailDetails.approved_variation === 1 && (
+                        <span className="ml-2 text-green-600">✓</span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="var2">
+                      Variation 2
+                      {emailDetails.is_approved && emailDetails.approved_variation === 2 && (
+                        <span className="ml-2 text-green-600">✓</span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="var3">
+                      Variation 3
+                      {emailDetails.is_approved && emailDetails.approved_variation === 3 && (
+                        <span className="ml-2 text-green-600">✓</span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="var1" className="mt-4">
+                    <div className="relative p-4 border rounded-md">
+                      {emailDetails.is_approved && emailDetails.approved_variation === 1 && (
+                        <div className="absolute right-2 top-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                          Approved
+                        </div>
+                      )}
+                      {emailDetails.body_1?.startsWith('<') ? (
+                        <div dangerouslySetInnerHTML={{ __html: emailDetails.body_1 || '' }} />
+                      ) : (
+                        <div
+                          className="whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: highlightUrls(emailDetails.body_1 || '') }}
+                        />
+                      )}
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          size="sm"
+                          disabled={isApproving || emailDetails.is_approved === true}
+                          onClick={() => handleApproval(true, 1)}
+                          className="flex items-center space-x-1"
+                        >
+                          {isApproving ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          )}
+                          {emailDetails.is_approved && emailDetails.approved_variation === 1
+                            ? 'Approved'
+                            : 'Approve This Version'}
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="var2" className="mt-4">
+                    <div className="relative p-4 border rounded-md">
+                      {emailDetails.is_approved && emailDetails.approved_variation === 2 && (
+                        <div className="absolute right-2 top-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                          Approved
+                        </div>
+                      )}
+                      {emailDetails.body_2?.startsWith('<') ? (
+                        <div dangerouslySetInnerHTML={{ __html: emailDetails.body_2 || '' }} />
+                      ) : (
+                        <div
+                          className="whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: highlightUrls(emailDetails.body_2 || '') }}
+                        />
+                      )}
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          size="sm"
+                          disabled={isApproving || emailDetails.is_approved === true}
+                          onClick={() => handleApproval(true, 2)}
+                          className="flex items-center space-x-1"
+                        >
+                          {isApproving ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          )}
+                          {emailDetails.is_approved && emailDetails.approved_variation === 2
+                            ? 'Approved'
+                            : 'Approve This Version'}
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="var3" className="mt-4">
+                    <div className="relative p-4 border rounded-md">
+                      {emailDetails.is_approved && emailDetails.approved_variation === 3 && (
+                        <div className="absolute right-2 top-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                          Approved
+                        </div>
+                      )}
+                      {emailDetails.body_3?.startsWith('<') ? (
+                        <div dangerouslySetInnerHTML={{ __html: emailDetails.body_3 || '' }} />
+                      ) : (
+                        <div
+                          className="whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: highlightUrls(emailDetails.body_3 || '') }}
+                        />
+                      )}
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          size="sm"
+                          disabled={isApproving || emailDetails.is_approved === true}
+                          onClick={() => handleApproval(true, 3)}
+                          className="flex items-center space-x-1"
+                        >
+                          {isApproving ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          )}
+                          {emailDetails.is_approved && emailDetails.approved_variation === 3
+                            ? 'Approved'
+                            : 'Approve This Version'}
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
+                {/* Only show rejection button if no variation is approved yet */}
+                {!emailDetails.is_approved && (
+                  <div className="mt-4 flex justify-start">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRejecting || emailDetails.is_approved === false}
+                      onClick={() => handleApproval(false)}
+                      className="flex items-center space-x-1 text-red-600 border-red-200 hover:bg-red-50"
+                    >
+                      {isRejecting ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <XCircle className="h-4 w-4 mr-2" />
+                      )}
+                      Reject All Variations
+                    </Button>
+                  </div>
+                )}
+              </div>
             ) : mail.text.startsWith('<') ? (
               <div dangerouslySetInnerHTML={{ __html: mail.text }} />
             ) : (

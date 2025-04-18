@@ -55,10 +55,17 @@ export async function deleteEmail(id: string) {
   return true
 }
 
-export async function updateApprovalStatus(id: string, isApproved: boolean) {
+export async function updateApprovalStatus(id: string, isApproved: boolean, variation?: number) {
+  const updateData: any = { is_approved: isApproved }
+
+  // If approving and a variation number is provided, include it in the update
+  if (isApproved && variation !== undefined) {
+    updateData.approved_variation = variation
+  }
+
   const { error } = await supabase
     .from('emails')
-    .update({ is_approved: isApproved })
+    .update(updateData)
     .eq('id', id)
 
   if (error) {
@@ -73,12 +80,24 @@ export async function updateApprovalStatus(id: string, isApproved: boolean) {
 export function convertEmailToMailFormat(email: EmailType) {
   const name = email.to_email.split('@')[0] || 'Unknown'
 
+  // Determine which body to use (approved variation or default)
+  let emailBody = email.body || '';
+  if (email.is_approved && email.approved_variation) {
+    if (email.approved_variation === 1 && email.body_1) {
+      emailBody = email.body_1;
+    } else if (email.approved_variation === 2 && email.body_2) {
+      emailBody = email.body_2;
+    } else if (email.approved_variation === 3 && email.body_3) {
+      emailBody = email.body_3;
+    }
+  }
+
   return {
     id: email.id,
     name: name.charAt(0).toUpperCase() + name.slice(1),
     email: email.to_email,
     subject: email.subject || 'No Subject',
-    text: email.body || '',
+    text: emailBody,
     date: email.sent_at,
     read: true, // Assuming all emails are read
     labels: [email.status.toLowerCase()],

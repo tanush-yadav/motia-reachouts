@@ -13,4 +13,17 @@
 
 - Never repeat a reachout to a company - I see two reachouts to moonvalley as they appeared in google search.
 
-- Lead verification, only high qual leads with generalised personalisation.
+6 hours straightforward - ready for launch.
+- Generate 3 personalised emails, by default choose 1st, but approve the email. We need a high performing copy. That works for everyone.
+- Multi approve emails.
+- NLP page to put in the prompt and get started search with crazy visuals
+- Lead list data prompt
+- Login page
+- User ID addition to every table and fetch
+- Job ID addition on every table and fetch
+
+Launch checklist
+- Posted to communities for free
+- Add a pricing section to unlock
+
+- DONE Lead verification, only high qual leads with generalised personalisation.

@@ -67,109 +67,51 @@ export async function scrapeJobPage(
     }
 
     // Extract job description - look for specific content sections
-    const descriptionSections = []
+    // Keep this line for potential future use if needed, but we won't populate it now.
 
     // Look for job description in HTML format (div with class="prose" or similar)
-    const jobDescriptionHTML = await page.$(
+    // Use page.$$ to find all matching elements
+    const jobDescriptionElements = await page.$$(
       '.prose, .job-description, .job-details, [data-testid="job-description"]'
-    )
-    if (jobDescriptionHTML) {
-      try {
-        // Try to get HTML content first
-        const htmlContent = await page.evaluate(
-          (el) => el.innerHTML,
-          jobDescriptionHTML
-        )
-        if (htmlContent && htmlContent.length > 0) {
-          logger.info('Found job description in HTML format')
-          jobDetails.job_description = htmlContent
-        } else {
-          // Fallback to text if HTML doesn't work
-          logger.info('Found job description container, extracting text')
-          jobDetails.job_description = await jobDescriptionHTML.innerText()
-        }
-      } catch (error) {
-        logger.warn(`Error extracting HTML job description: ${error}`)
-        // Try innerText as fallback
-        try {
-          jobDetails.job_description = await jobDescriptionHTML.innerText()
-        } catch (innerTextError) {
-          logger.warn(
-            `Error extracting innerText job description: ${innerTextError}`
-          )
-        }
-      }
-    } else {
-      logger.info(
-        'No specific job description container found, looking for sections...'
-      )
+    );
 
-      // Look for "About the role" section
-      const aboutRole = await page.$(
-        'h2:has-text("About the role"), h3:has-text("About the role")'
-      )
-      if (aboutRole) {
-        const content = await page.evaluate((el) => {
-          const next = el.nextElementSibling
-          return next ? next.innerText : ''
-        }, aboutRole)
+    if (jobDescriptionElements.length > 0) {
+      let combinedHtmlContent = '';
+      logger.info(`Found ${jobDescriptionElements.length} potential job description elements.`);
 
-        if (content) {
-          logger.info('Found "About the role" section')
-          descriptionSections.push(`About the role\n\n${content}`)
-        }
+      for (const element of jobDescriptionElements) {
+          try {
+              // Try to get HTML content from each element
+              const htmlContent = await page.evaluate(
+                  (el) => el.innerHTML,
+                  element
+              );
+              if (htmlContent && htmlContent.length > 0) {
+                  combinedHtmlContent += htmlContent + '\n\n'; // Add separator
+              }
+          } catch (error) {
+              logger.warn(`Error extracting HTML from a description element: ${error}`);
+              // Optionally try innerText as fallback for this specific element
+              try {
+                  const textContent = await element.innerText();
+                  if (textContent && textContent.length > 0) {
+                      combinedHtmlContent += `<p>${textContent}</p>\n\n`; // Wrap in paragraph for consistency
+                  }
+              } catch (innerTextError) {
+                  logger.warn(`Error extracting innerText from description element: ${innerTextError}`);
+              }
+          }
       }
 
-      // Look for "Responsibilities" section
-      const responsibilities = await page.$(
-        'h2:has-text("Responsibilities"), h3:has-text("Responsibilities")'
-      )
-      if (responsibilities) {
-        const content = await page.evaluate((el) => {
-          const next = el.nextElementSibling
-          return next ? next.innerText : ''
-        }, responsibilities)
-
-        if (content) {
-          logger.info('Found "Responsibilities" section')
-          descriptionSections.push(`Responsibilities\n\n${content}`)
-        }
-      }
-
-      // Look for "Requirements" section
-      const requirements = await page.$(
-        'h2:has-text("Requirements"), h3:has-text("Requirements")'
-      )
-      if (requirements) {
-        const content = await page.evaluate((el) => {
-          const next = el.nextElementSibling
-          return next ? next.innerText : ''
-        }, requirements)
-
-        if (content) {
-          logger.info('Found "Requirements" section')
-          descriptionSections.push(`Requirements\n\n${content}`)
-        }
-      }
-
-      // Combine all sections
-      if (descriptionSections.length > 0) {
-        jobDetails.job_description = descriptionSections.join('\n\n')
-        logger.info(
-          `Assembled job description from ${descriptionSections.length} sections`
-        )
+      if (combinedHtmlContent) {
+          jobDetails.job_description = combinedHtmlContent.trim();
+          logger.info('Combined job description from multiple elements.');
       } else {
-        // Fallback to main content if no specific sections found
-        logger.info('No specific sections found, falling back to main content')
-        const mainContent = await page.$('main')
-        if (mainContent) {
-          jobDetails.job_description = await mainContent.innerText()
-          logger.info('Extracted job description from main content')
-        } else {
-          logger.warn('Could not extract job description')
-        }
+          logger.warn('Found description elements but could not extract content.');
       }
     }
+
+    // Fallback to main content if no specific container or content found yet
 
     // Log the length of job description if found
     if (jobDetails.job_description) {

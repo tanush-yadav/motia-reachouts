@@ -19,15 +19,19 @@ export async function getEmailFromLinkedIn(
     // Prepare the request to Apollo's people/match endpoint
     const url = 'https://api.apollo.io/v1/people/match'
     const payload = {
-      api_key: apiKey,
       linkedin_url: linkedinUrl,
+    }
+
+    // Set headers with API key
+    const headers = {
+      'X-Api-Key': apiKey
     }
 
     // Log request details (masking the API key)
     logger.info(`Apollo API Request: POST ${url}`)
 
-    // Make the request
-    const response = await axios.post(url, payload)
+    // Make the request with headers
+    const response = await axios.post(url, payload, { headers })
 
     // Log response info
     logger.info(`Apollo API Response Status: ${response.status}`)

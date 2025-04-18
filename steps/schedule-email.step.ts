@@ -20,11 +20,11 @@ interface EmailLog {
   lead_id: string
   to_email: string
   subject: string
-  body: string
+  body_1: string
   template_used: string
   status: string
   scheduled_at: string | null
-  is_approved: boolean
+  is_approved: boolean | null
 }
 
 export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
@@ -152,11 +152,11 @@ export async function handler(args: ApolloEmailsUpdatedEvent, ctx: any) {
           lead_id: lead.id,
           to_email: lead.contact_email,
           subject: emailTemplate.subject,
-          body: emailTemplate.body,
+          body_1: emailTemplate.body,
           template_used: emailTemplate.name,
           status: 'Scheduled',
           scheduled_at: scheduledDate.toISOString(),
-          is_approved: null, // Default to null so we can update this from UI.
+          is_approved: null,
         }
 
         // Insert into emails table
