@@ -10,7 +10,7 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 
 @marvin.fn
-async def generate_variation(job_description: str, current_message: str, example_input_output: str) -> str:
+async def generate_variation(job_description: str, current_message: str) -> str:
     """
     You are helping improve a cold outreach message for a Founding Engineer or similar early technical role.
 
@@ -19,8 +19,6 @@ async def generate_variation(job_description: str, current_message: str, example
     current_message: A friendly, raw draft by the user (good base, needs tightening).
 
     job_description: Includes the job responsibilities, required skills, and the company’s mission/vision.
-
-    example_input_output : example input current message and output message.
 
     Task:
 
@@ -52,24 +50,6 @@ async def generate_variation(job_description: str, current_message: str, example
 
     If something feels obvious or filler, cut it.
     """
-
-example_input_output = {
-    "input": "Hi Jay, Saw the Founding Engineer role at Heroic Story and felt compelled to reach out. I’ve scaled an agency in college, was founding engineer at Layup (YC W23), and bootstrapped my last product to $5K MRR before selling it to an enterprise client. Lately, I’ve been building micro-SaaS tools—one of them, a voice agent for order-taking, is live at a restaurant in AU and takes 100 calls a day. You can check out some of my work here. I see this is a remote role, which is perfect to start — but I'd love to come visit and work in person if possible. If this clicks, happy to chat. —Tanush",
-    "output": """Good Morning Jay,
-
-Saw the Founding Engineer role at Heroic Story and felt compelled to reach out.
-
-I’ve scaled an agency, was founding engineer at Layup (YC W23), and bootstrapped a product to $5K MRR before selling it to an enterprise client.
-
-Recently been building micro-SaaS tools—one is a live voice agent in Australia handling 100+ daily calls. I love building systems that make creativity more scalable, so Plotdrive’s mission resonates deeply.
-
-Remote is perfect to start — but I'd love to visit and jam in person too.
-
-If this clicks, happy to chat.
-
-—Tanush
-"""
-}
 
 def init_supabase_client(ctx):
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
@@ -135,9 +115,9 @@ async def handler(event, ctx):
 
             # Generate 3 variations
             ctx.logger.info(f"Generating 3 variations for email {email_id}")
-            body2 = await generate_variation(job_description=job_description, current_message=current_message, example_input_output=example_input_output)
-            body3 = await generate_variation(job_description=job_description, current_message=current_message, example_input_output=example_input_output)
-            body4 = await generate_variation(job_description=job_description, current_message=current_message, example_input_output=example_input_output)
+            body2 = await generate_variation(job_description=job_description, current_message=current_message)
+            body3 = await generate_variation(job_description=job_description, current_message=current_message)
+            body4 = await generate_variation(job_description=job_description, current_message=current_message)
 
             # Update the email record with variations
             update_data = {
